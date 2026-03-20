@@ -1,14 +1,106 @@
 # Release History
 
-## 11.7.0b3 (Unreleased)
+## 12.0.0 (2026-04-01)
 
 ### Features Added
 
+- Knowledge Base support:
+  - Added `azure.search.documents.knowledgebases.KnowledgeBaseRetrievalClient` for knowledge retrieval operations.
+  - Added Knowledge Base and Knowledge Source management operations in `SearchIndexClient`.
+  - Added `azure.search.documents.indexes.models.KnowledgeBase` and related models.
+  - Added knowledge source types: `AzureBlobKnowledgeSource`, `WebKnowledgeSource`, `SearchIndexKnowledgeSource`, `IndexedOneLakeKnowledgeSource`.
+  - Added `KnowledgeRetrievalMinimalReasoningEffort` and `KnowledgeRetrievalReasoningEffort` models.
+  - Added `KnowledgeSourceSynchronizationError`, `KnowledgeSourceStatistics`, `KnowledgeSourceStatus` models.
+
+- Search query and result enhancements:
+  - Added `RescoringOptions` model for result rescoring support.
+  - Added `query_source_authorization` and `enable_elevated_read` keyword arguments to `SearchClient.search`.
+  - Exposed `@search.reranker_boosted_score` in search results.
+
+- Index and indexer enhancements:
+  - Added `SearchIndex.description` property.
+  - Added `IndexerResyncBody` model and `resync` method in `SearchIndexerClient`.
+  - Added `IndexerResyncOption` enum.
+
+- New skills:
+  - Added `ChatCompletionSkill` and related models (`ChatCompletionResponseFormat`, `ChatCompletionSchema`, `CommonModelParameters`).
+  - Added `ContentUnderstandingSkill` and related models.
+  - Added `DocumentIntelligenceLayoutSkill` configuration models (`DocumentIntelligenceLayoutSkillChunkingProperties`, `DocumentIntelligenceLayoutSkillExtractionOptions`).
+  - Added `EntityCategory` and `EntityRecognitionSkillLanguage` enums.
+  - Added `SentimentSkillLanguage` enum.
+
+- Other new models and enums:
+  - Added `AIServices` model for AI service connections.
+  - Added `CompletedSynchronizationState` and `SynchronizationState` models.
+  - Added `RankingOrder` enum.
+
 ### Breaking Changes
 
-### Bugs Fixed
+The following changes are due to the migration from AutoRest to TypeSpec code generation and affect all users:
+
+- `SentimentSkillVersion` and `EntityRecognitionSkillVersion` are removed. Only the latest skill versions are supported.
+- Model `serialize` and `deserialize` methods are removed. Use `as_dict` and constructor instead.
+- `SearchFieldDataType` enum values are now UPPER_CASE (e.g., `STRING` instead of `String`). PascalCase aliases (e.g., `SearchFieldDataType.String`) are preserved and continue to work at runtime.
+
+> The following changes do not impact the API of stable versions such as 11.6.0.
+> Only code written against a beta version such as 11.7.0b2 may be affected.
+
+- Below models do not exist in this release
+  - `azure.search.documents.models.HybridSearch`
+  - `azure.search.documents.models.QueryLanguage`
+  - `azure.search.documents.models.QueryResultDocumentInnerHit`
+  - `azure.search.documents.models.QueryRewritesType`
+  - `azure.search.documents.models.QuerySpellerType`
+  - `azure.search.documents.models.SearchScoreThreshold`
+  - `azure.search.documents.models.SemanticQueryRewritesResultType`
+  - `azure.search.documents.models.VectorSimilarityThreshold`
+  - `azure.search.documents.models.VectorThreshold`
+  - `azure.search.documents.models.VectorThresholdKind`
+  - `azure.search.documents.indexes.models.AIServicesVisionParameters`
+  - `azure.search.documents.indexes.models.AIServicesVisionVectorizer`
+  - `azure.search.documents.indexes.models.AzureMachineLearningSkill`
+  - `azure.search.documents.indexes.models.AzureOpenAITokenizerParameters`
+  - `azure.search.documents.indexes.models.IndexerCurrentState`
+  - `azure.search.documents.indexes.models.IndexerExecutionStatusDetail`
+  - `azure.search.documents.indexes.models.IndexingMode`
+  - `azure.search.documents.indexes.models.PermissionFilter`
+  - `azure.search.documents.indexes.models.SearchIndexPermissionFilterOption`
+  - `azure.search.documents.indexes.models.SplitSkillEncoderModelName`
+  - `azure.search.documents.indexes.models.SplitSkillUnit`
+  - `azure.search.documents.indexes.models.VisionVectorizeSkill`
+  - SharePoint knowledge source types (`IndexedSharePointKnowledgeSource`, `RemoteSharePointKnowledgeSource` and related models)
+
+- Below properties do not exist in this release
+  - `azure.search.documents.models.FacetResult.avg`
+  - `azure.search.documents.models.FacetResult.min`
+  - `azure.search.documents.models.FacetResult.max`
+  - `azure.search.documents.models.FacetResult.sum`
+  - `azure.search.documents.models.FacetResult.cardinality`
+  - `azure.search.documents.models.VectorQuery.filter_override`
+  - `azure.search.documents.models.VectorQuery.per_document_vector_limit`
+  - `azure.search.documents.models.VectorQuery.threshold`
+  - `azure.search.documents.indexes.models.SearchIndex.permission_filter_option`
+  - `azure.search.documents.indexes.models.SearchIndex.purview_enabled`
+  - `azure.search.documents.indexes.models.SplitSkill.unit`
+  - `azure.search.documents.indexes.models.SplitSkill.azure_open_ai_tokenizer_parameters`
+  - `azure.search.documents.indexes.models.KnowledgeBase.answer_instructions`
+  - `azure.search.documents.indexes.models.KnowledgeBase.output_mode`
+  - `azure.search.documents.indexes.models.KnowledgeBase.retrieval_instructions`
+  - `azure.search.documents.indexes.models.KnowledgeBase.retrieval_reasoning_effort`
+
+- Below parameters do not exist in this release
+  - `SearchClient.search.hybrid_search`
+  - `SearchClient.search.query_language`
+  - `SearchClient.search.query_rewrites`
+  - `SearchClient.search.speller`
+  - `SearchClient.search.semantic_fields`
+
+- Removed enum values: `KnowledgeRetrievalReasoningEffortKind.{low, medium}` (only `minimal` remains).
+- Removed GPT-4o/4.1 model names from `AzureOpenAIModelName`; added GPT-5.4-mini/nano.
 
 ### Other Changes
+
+- Updated default API version to `2026-04-01`.
 
 ## 11.7.0b2 (2025-11-13)
 
