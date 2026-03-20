@@ -1,0 +1,22 @@
+{
+  "name": "evaluation-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion demo: Azure AI Evaluation local-evals CLI workflow",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts EvaluationDemo out/video.mp4",
+    "upgrade": "remotion upgrade"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.242",
+    "remotion": "4.0.242",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@remotion/eslint-config": "4.0.242",
+    "typescript": "^5.5.0",
+    "@types/react": "^18.3.0"
+  }
+}

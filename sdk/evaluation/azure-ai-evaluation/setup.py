@@ -81,6 +81,8 @@ setup(
         "msrest>=0.6.21",
         "Jinja2>=3.1.6",
         "aiohttp>=3.0",
+        "click>=8.0",
+        "rich>=13.0",
     ],
     extras_require={
         "redteam": ['pyrit==0.11.0;python_version>="3.10"'],
@@ -92,10 +94,16 @@ setup(
         "Bug Reports": "https://github.com/Azure/azure-sdk-for-python/issues",
         "Source": "https://github.com/Azure/azure-sdk-for-python",
     },
+    entry_points={
+        "console_scripts": [
+            "local-evals=azure.ai.evaluation.cli:main",
+        ],
+    },
     package_data={
         "pytyped": ["py.typed"],
         "azure.ai.evaluation.simulator._prompty": ["*.prompty"],
         "azure.ai.evaluation.simulator._data_sources": ["*.json"],
         "azure.ai.evaluation._common.raiclient": ["**/*.py"],
+        "azure.ai.evaluation._engine.ui": ["*.html"],
     },
 )

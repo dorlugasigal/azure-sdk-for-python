@@ -1,0 +1,23 @@
+experiment:
+  name: "mixed-eval-demo"
+
+  dataset:
+    name: "qa_data"
+    type: "jsonl"
+    args:
+      data_path: "demo/data.jsonl"
+
+  metrics:
+    - name: "f1_score"
+      mapping:
+        response: "dataset.answer"
+        ground_truth: "dataset.context"
+    - name: "relevance"
+      mapping:
+        query: "dataset.question"
+        response: "dataset.answer"
+
+  connections:
+    default:
+      azure_endpoint: "https://foundry-evee-ko9z2s7c.cognitiveservices.azure.com/"
+      azure_deployment: "gpt-4.1-mini"

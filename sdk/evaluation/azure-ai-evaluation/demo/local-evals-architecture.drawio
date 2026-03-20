@@ -1,0 +1,355 @@
+<mxfile host="65bd71144e">
+    <diagram name="Architecture" id="ROLyoFm0Ghgce1FRanE-">
+        <mxGraphModel dx="2262" dy="1320" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="2200" background="#ffffff" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="local-evals — Architecture &amp; File Map" style="text;html=1;fontSize=28;fontStyle=1;align=center;fillColor=none;strokeColor=none;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="350" y="20" width="600" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="subtitle" value="Compute (where eval runs) and Tracking (where results publish) are independent" style="text;html=1;fontSize=14;align=center;fillColor=none;strokeColor=none;fontColor=#888888;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="60" width="700" height="25" as="geometry"/>
+                </mxCell>
+                <mxCell id="L1" value="① User Input" style="swimlane;startSize=30;fillColor=#f5f5f5;strokeColor=#cccccc;rounded=1;fontSize=16;fontStyle=1;fontColor=#888888;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="100" width="1225" height="230" as="geometry"/>
+                </mxCell>
+                <mxCell id="cli_box" value="" style="rounded=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" parent="L1" vertex="1">
+                    <mxGeometry x="15" y="40" width="380" height="170" as="geometry"/>
+                </mxCell>
+                <mxCell id="cli_title" value="cli.py" style="text;fontSize=16;fontStyle=1;fontColor=#9673a6;align=left;" parent="L1" vertex="1">
+                    <mxGeometry x="25" y="45" width="100" height="25" as="geometry"/>
+                </mxCell>
+                <mxCell id="cli_run" value="run" style="rounded=1;fillColor=#d4c4e3;strokeColor=#9673a6;fontSize=13;fontStyle=1;" parent="L1" vertex="1">
+                    <mxGeometry x="25" y="80" width="70" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="cli_new" value="new" style="rounded=1;fillColor=#f0e6f6;strokeColor=#b99bc9;fontSize=12;" parent="L1" vertex="1">
+                    <mxGeometry x="105" y="80" width="60" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="cli_val" value="validate" style="rounded=1;fillColor=#f0e6f6;strokeColor=#b99bc9;fontSize=12;" parent="L1" vertex="1">
+                    <mxGeometry x="175" y="80" width="75" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="cli_list" value="list" style="rounded=1;fillColor=#f0e6f6;strokeColor=#b99bc9;fontSize=12;" parent="L1" vertex="1">
+                    <mxGeometry x="260" y="80" width="55" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="cli_view" value="view" style="rounded=1;fillColor=#f0e6f6;strokeColor=#b99bc9;fontSize=12;" parent="L1" vertex="1">
+                    <mxGeometry x="325" y="80" width="55" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="cli_more" value="+ clear · compute · tracking · model · metric · dataset" style="text;fontSize=11;fontColor=#9673a6;align=left;fontStyle=2;" parent="L1" vertex="1">
+                    <mxGeometry x="70" y="127" width="340" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="cli_flags" value="run flags: --config -c  ·  --remote -r  ·  --models -m&#xa;--no-tracking  ·  --path -p  ·  --env -e  ·  --auto-approve -y" style="text;fontSize=11;fontColor=#666666;align=left;" parent="L1" vertex="1">
+                    <mxGeometry x="70" y="155" width="360" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="yaml_box" value="" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" parent="L1" vertex="1">
+                    <mxGeometry x="420" y="40" width="785" height="170" as="geometry"/>
+                </mxCell>
+                <mxCell id="yaml_title" value="evals.yaml (config.py parses this)" style="text;fontSize=16;fontStyle=1;fontColor=#d6b656;align=left;" parent="L1" vertex="1">
+                    <mxGeometry x="430" y="45" width="350" height="25" as="geometry"/>
+                </mxCell>
+                <mxCell id="y_compute" value="compute:&#xa;  type: foundry&#xa;  azure_ai_project: &quot;https://...&quot;&#xa;  target:&#xa;    type: azure_ai_model&#xa;    model: gpt-4.1-mini" style="rounded=1;fillColor=#c8e6c0;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;whiteSpace=wrap;fontStyle=1;" parent="L1" vertex="1">
+                    <mxGeometry x="460" y="80" width="260" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="y_compute_lbl" value="↑ WHERE eval RUNS" style="text;fontSize=12;fontColor=#82b366;fontStyle=3;align=center;" parent="L1" vertex="1">
+                    <mxGeometry x="460" y="172" width="260" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="y_tracking" value="tracking_backend:&#xa;  type: foundry&#xa;  azure_ai_project: &quot;https://...&quot;" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;whiteSpace=wrap;fontStyle=1;" parent="L1" vertex="1">
+                    <mxGeometry x="740" y="87" width="235" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="y_tracking_lbl" value="↑ WHERE results PUBLISH" style="text;fontSize=12;fontColor=#d6b656;fontStyle=3;align=center;" parent="L1" vertex="1">
+                    <mxGeometry x="740" y="145" width="235" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="pKTch0dZ7TwNOTS2gc6K-1" value="rest of yaml: &#xa;models, metrics, connection" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;whiteSpace=wrap;fontStyle=1;" vertex="1" parent="L1">
+                    <mxGeometry x="990" y="90" width="200" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2" value="② Orchestration" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;fontSize=16;fontStyle=1;fontColor=#6c8ebf;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="360" width="1220" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="runner_file" value="runner.py → ExperimentRunner" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;whiteSpace=wrap;" parent="L2" vertex="1">
+                    <mxGeometry x="15" y="40" width="310" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="runner_desc" value="• Loads .env + YAML config (via config.py)&#xa;• Reads compute: section → selects compute backend&#xa;• Builds RunContext (config_path, tracking_enabled, model_filter, ...)&#xa;• Calls backend.submit(context)" style="text;fontSize=12;fontColor=#666666;align=left;whiteSpace=wrap;" parent="L2" vertex="1">
+                    <mxGeometry x="345" y="35" width="450" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="evalv2_file" value="_eval_v2.py → evaluate_v2()" style="rounded=1;fillColor=#f0f0f0;strokeColor=#bbbbbb;fontSize=12;fontStyle=2;fontColor=#999999;whiteSpace=wrap;" parent="L2" vertex="1">
+                    <mxGeometry x="830" y="45" width="250" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="evalv2_desc" value="Programmatic API · Not used by CLI&#xa;Builds YAML from Python args → calls ModelEvaluator" style="text;fontSize=13;fontColor=#1A1A1A;align=left;fontStyle=2;" parent="L2" vertex="1">
+                    <mxGeometry x="795" y="80" width="370" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" value="run cmd" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;strokeWidth=2;fontSize=11;" parent="1" source="cli_run" target="runner_file" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2" value="config" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#d6b656;dashed=1;strokeWidth=2;fontSize=11;exitX=0.381;exitY=1.004;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="yaml_box" target="runner_file" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="759" y="340"/>
+                            <mxPoint x="230" y="340"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="decision" value="--remote flag?&#xa;or compute.type = foundry?" style="rhombus;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="510" y="520" width="260" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#333333;strokeWidth=2;" parent="1" source="runner_file" target="decision" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="210" y="470"/>
+                            <mxPoint x="640" y="470"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="L4" value="③ Compute Backend — WHERE evaluation RUNS" style="swimlane;startSize=30;fillColor=#d5e8d4;strokeColor=#82b366;rounded=1;fontSize=16;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="630" width="1220" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="local_box" value="" style="rounded=1;fillColor=#e8f5e3;strokeColor=#82b366;" parent="L4" vertex="1">
+                    <mxGeometry x="15" y="40" width="500" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="local_file" value="compute.py" style="text;fontSize=13;fontStyle=1;fontColor=#82b366;" parent="L4" vertex="1">
+                    <mxGeometry x="25" y="45" width="120" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="local_class" value="LocalComputeBackend" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;" parent="L4" vertex="1">
+                    <mxGeometry x="25" y="70" width="220" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="local_desc" value="→ Calls ModelEvaluator in-process&#xa;→ ThreadPoolExecutor · Rich progress bar" style="text;fontSize=12;fontColor=#666;align=left;" parent="L4" vertex="1">
+                    <mxGeometry x="260" y="70" width="250" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="fcomp_box" value="" style="rounded=1;fillColor=#e8f5e3;strokeColor=#82b366;" parent="L4" vertex="1">
+                    <mxGeometry x="560" y="40" width="640" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="fcomp_file" value="foundry_compute.py" style="text;fontSize=13;fontStyle=1;fontColor=#82b366;" parent="L4" vertex="1">
+                    <mxGeometry x="570" y="45" width="180" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="fcomp_class" value="FoundryComputeBackend" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;" parent="L4" vertex="1">
+                    <mxGeometry x="890" y="65" width="240" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="fcomp_desc" value="→ Submits via OpenAI evals API&#xa;→ Model target (azure_ai_model) or dataset eval&#xa;→ Polls for completion" style="text;fontSize=12;fontColor=#666;align=left;" parent="L4" vertex="1">
+                    <mxGeometry x="570" y="70" width="280" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="e4" value="No (default)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#82b366;strokeWidth=2;fontSize=12;" parent="1" source="decision" target="local_class" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="270" y="555"/>
+                            <mxPoint x="270" y="740"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e5" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#82b366;strokeWidth=2;fontSize=12;" parent="1" source="decision" target="fcomp_class" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1050" y="555"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="L5" value="④ Core Engine (runs inside LocalComputeBackend)" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;fontSize=16;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="810" width="1220" height="250" as="geometry"/>
+                </mxCell>
+                <mxCell id="f_eval" value="evaluator.py" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;" parent="L5" vertex="1">
+                    <mxGeometry x="513" y="40" width="120" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="f_disc" value="discovery.py" style="rounded=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontColor=#333333;" parent="L5" vertex="1">
+                    <mxGeometry x="1090" y="87" width="100" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="f_deco" value="decorators.py" style="rounded=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontColor=#333333;" parent="L5" vertex="1">
+                    <mxGeometry x="1090" y="197" width="100" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="f_models" value="models.py" style="rounded=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontColor=#333333;" parent="L5" vertex="1">
+                    <mxGeometry x="1090" y="161" width="100" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="f_datasets" value="datasets.py" style="rounded=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontColor=#333333;" parent="L5" vertex="1">
+                    <mxGeometry x="1090" y="125" width="100" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="f_config" value="config.py" style="rounded=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontColor=#333333;" parent="L5" vertex="1">
+                    <mxGeometry x="1090" y="51" width="100" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="s1" value="1. Discover&#xa;@model @metric @dataset&#xa;(AST scan project dir)" style="rounded=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;whiteSpace=wrap;" parent="L5" vertex="1">
+                    <mxGeometry x="15" y="85" width="195" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="s2" value="2. Cartesian Product&#xa;Expand model args&#xa;Simplify variant names" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;whiteSpace=wrap;" parent="L5" vertex="1">
+                    <mxGeometry x="240" y="85" width="195" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="s3" value="3. model.infer()&#xa;Per record, parallel&#xa;ThreadPoolExecutor" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;whiteSpace=wrap;" parent="L5" vertex="1">
+                    <mxGeometry x="465" y="85" width="180" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4" value="4. metric.compute()&#xa;Per record + aggregate()&#xa;Field mapping applied" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;whiteSpace=wrap;" parent="L5" vertex="1">
+                    <mxGeometry x="675" y="85" width="195" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5" value="5. Save Output&#xa;results.jsonl&#xa;summary.json" style="rounded=1;fillColor=#f5f5f5;strokeColor=#666;fontSize=12;whiteSpace=wrap;" parent="L5" vertex="1">
+                    <mxGeometry x="900" y="85" width="150" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="es12" style="strokeColor=#999;" parent="L5" source="s1" target="s2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="es23" style="strokeColor=#999;" parent="L5" source="s2" target="s3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="es34" style="strokeColor=#999;" parent="L5" source="s3" target="s4" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="es45" style="strokeColor=#999;" parent="L5" source="s4" target="s5" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="lifecycle" value="Fires tracking lifecycle events at each step:   on_experiment_started  →  start_run (per variant)  →  on_inference_started / completed (per record)  →  on_results_analyzed  →  on_artifact_generated  →  on_run_completed  →  on_experiment_completed" style="rounded=1;fillColor=#fff9e6;strokeColor=#e6d094;fontSize=12;fontColor=#888;align=left;spacingLeft=10;whiteSpace=wrap;" parent="L5" vertex="1">
+                    <mxGeometry x="15" y="160" width="1050" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="bridge" value="Built-in evaluators bridged as @metric:   _f1_score.py → @metric(&#39;f1_score&#39;)  ·  _relevance.py → @metric(&#39;relevance&#39;)  ·  + coherence, fluency, groundedness, similarity..." style="text;fontSize=11;fontColor=#aaaaaa;align=left;fontStyle=2;whiteSpace=wrap;" parent="L5" vertex="1">
+                    <mxGeometry x="15" y="205" width="1050" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#6c8ebf;strokeWidth=2;" parent="1" source="local_class" target="L5" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="175" y="775"/>
+                            <mxPoint x="630" y="775"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="L6" value="⑤ Tracking Backend — WHERE results are PUBLISHED" style="swimlane;startSize=30;fillColor=#fff2cc;strokeColor=#d6b656;rounded=1;fontSize=16;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="1100" width="1220" height="210" as="geometry"/>
+                </mxCell>
+                <mxCell id="tf_label" value="tracking/" style="text;fontSize=13;fontColor=#d6b656;fontStyle=1;" parent="L6" vertex="1">
+                    <mxGeometry x="15" y="35" width="80" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="tf_backend" value="backend.py" style="rounded=1;fontSize=11;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" parent="L6" vertex="1">
+                    <mxGeometry x="1080" y="160" width="100" height="25" as="geometry"/>
+                </mxCell>
+                <mxCell id="tf_events" value="events.py" style="rounded=1;fontSize=11;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" parent="L6" vertex="1">
+                    <mxGeometry x="1080" y="122.5" width="100" height="25" as="geometry"/>
+                </mxCell>
+                <mxCell id="tf_factory" value="factory.py" style="rounded=1;fontSize=11;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" parent="L6" vertex="1">
+                    <mxGeometry x="1080" y="85" width="100" height="25" as="geometry"/>
+                </mxCell>
+                <mxCell id="tf_const" value="constants.py" style="rounded=1;fontSize=11;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" parent="L6" vertex="1">
+                    <mxGeometry x="1080" y="50" width="100" height="25" as="geometry"/>
+                </mxCell>
+                <mxCell id="noop_box" value="" style="rounded=1;fillColor=#f9f9f9;strokeColor=#cccccc;" parent="L6" vertex="1">
+                    <mxGeometry x="15" y="60" width="450" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="noop_file" value="noop.py" style="text;fontSize=12;fontStyle=1;fontColor=#999;" parent="L6" vertex="1">
+                    <mxGeometry x="25" y="85" width="80" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="noop_class" value="NoOpFallbackBackend" style="rounded=1;fillColor=#f5f5f5;strokeColor=#999;fontSize=14;fontStyle=1;" parent="L6" vertex="1">
+                    <mxGeometry x="25" y="110" width="220" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="noop_desc" value="Default when tracking not configured&#xa;or --no-tracking flag used&#xa;All lifecycle methods are silent no-ops" style="text;fontSize=12;fontColor=#999;align=left;" parent="L6" vertex="1">
+                    <mxGeometry x="260" y="105" width="200" height="48" as="geometry"/>
+                </mxCell>
+                <mxCell id="ftrack_box" value="" style="rounded=1;fillColor=#fff9e6;strokeColor=#d6b656;" parent="L6" vertex="1">
+                    <mxGeometry x="500" y="60" width="540" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="ftrack_file" value="foundry_backend.py" style="text;fontSize=12;fontStyle=1;fontColor=#d6b656;" parent="L6" vertex="1">
+                    <mxGeometry x="510" y="85" width="160" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="ftrack_class" value="FoundryTrackingBackend" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1;" parent="L6" vertex="1">
+                    <mxGeometry x="510" y="110" width="240" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="ftrack_desc" value="• Connects to Foundry project (AIProjectClient)&#xa;• Creates 1 eval per experiment&#xa;• Adds 1 run per model variant (for comparison)&#xa;• Publishes original dataset records&#xa;• Auto-resolves deployment from connections" style="text;fontSize=12;fontColor=#666;align=left;whiteSpace=wrap;" parent="L6" vertex="1">
+                    <mxGeometry x="770" y="88" width="310" height="78" as="geometry"/>
+                </mxCell>
+                <mxCell id="ftrack_when" value="Activated when:  tracking_backend.type = &quot;foundry&quot;" style="text;fontSize=12;fontColor=#d6b656;fontStyle=3;align=left;" parent="L6" vertex="1">
+                    <mxGeometry x="595" y="163.5" width="350" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="e7" value="lifecycle events" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#d6b656;strokeWidth=2;dashed=1;fontSize=12;" parent="1" source="lifecycle" target="L6" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="900" y="1053"/>
+                            <mxPoint x="650" y="1053"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="L7" value="⑥ Azure AI Foundry (Cloud)" style="swimlane;startSize=32;fillColor=#0050ef;strokeColor=#001DBC;rounded=1;fontSize=16;fontStyle=1;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="1367" width="800" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="c1" value="Evaluations&#xa;Portal" style="rounded=1;fillColor=#1a73e8;strokeColor=#0050ef;fontColor=#fff;fontSize=13;" parent="L7" vertex="1">
+                    <mxGeometry x="20" y="42" width="140" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="c2" value="Deployed&#xa;Models" style="rounded=1;fillColor=#1a73e8;strokeColor=#0050ef;fontColor=#fff;fontSize=13;" parent="L7" vertex="1">
+                    <mxGeometry x="190" y="42" width="130" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="c3" value="Built-in&#xa;Evaluators" style="rounded=1;fillColor=#1a73e8;strokeColor=#0050ef;fontColor=#fff;fontSize=13;" parent="L7" vertex="1">
+                    <mxGeometry x="350" y="42" width="130" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="c4" value="Custom&#xa;Evaluators" style="rounded=1;fillColor=#1a73e8;strokeColor=#0050ef;fontColor=#fff;fontSize=13;" parent="L7" vertex="1">
+                    <mxGeometry x="510" y="42" width="130" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="c5" value="Agents" style="rounded=1;fillColor=#1a73e8;strokeColor=#0050ef;fontColor=#fff;fontSize=13;" parent="L7" vertex="1">
+                    <mxGeometry x="670" y="42" width="110" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="c_api" value="OpenAI-compatible API:  evals.create()  ·  evals.runs.create()  ·  beta.evaluators.create_version()" style="text;fontSize=11;fontColor=#aabbff;align=center;" parent="L7" vertex="1">
+                    <mxGeometry x="20" y="92" width="750" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="e8" value="--remote submits" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#0050ef;strokeWidth=2;fontSize=12;" parent="1" source="fcomp_class" target="L7" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1320" y="715"/>
+                            <mxPoint x="1320" y="1340"/>
+                            <mxPoint x="440" y="1340"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e9" value="publish results" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#d6b656;strokeWidth=2;dashed=1;fontSize=12;" parent="1" source="ftrack_class" target="c1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="590" y="1330"/>
+                            <mxPoint x="130" y="1330"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="L8" value="⑦ Results Viewer" style="swimlane;startSize=28;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;fontSize=16;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="850" y="1367" width="410" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="v_file" value="ui/results_viewer.html" style="rounded=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontStyle=1;" parent="L8" vertex="1">
+                    <mxGeometry x="15" y="38" width="180" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="v_desc" value="React UI &#xa;local-evals view &#xa;localhost:8765 &#xa;Comparison table &#xa;Per-record drill-down" style="text;fontSize=12;fontColor=#666;align=left;" parent="L8" vertex="1">
+                    <mxGeometry x="210" y="30.5" width="150" height="79.5" as="geometry"/>
+                </mxCell>
+                <mxCell id="e10" value="reads JSONL + JSON" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;dashed=1;strokeWidth=3;fontSize=11;" parent="1" source="s5" target="L8" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1120" y="923"/>
+                            <mxPoint x="1120" y="1080"/>
+                            <mxPoint x="1300" y="1080"/>
+                            <mxPoint x="1300" y="1320"/>
+                            <mxPoint x="1055" y="1320"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="legend" value="" style="rounded=1;fillColor=none;strokeColor=#dddddd;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="1500" width="1220" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="ll1" value="" style="endArrow=classic;strokeColor=#6c8ebf;strokeWidth=2;" parent="legend" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="10" y="18" as="sourcePoint"/>
+                        <mxPoint x="35" y="18" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="lt1" value="Compute flow" style="text;fontSize=12;fontColor=#333;" parent="legend" vertex="1">
+                    <mxGeometry x="40" y="6" width="100" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="ll2" value="" style="endArrow=classic;strokeColor=#d6b656;strokeWidth=2;dashed=1;" parent="legend" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="170" y="18" as="sourcePoint"/>
+                        <mxPoint x="195" y="18" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="lt2" value="Tracking flow" style="text;fontSize=12;fontColor=#333;" parent="legend" vertex="1">
+                    <mxGeometry x="200" y="6" width="100" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="ll3" value="" style="endArrow=classic;strokeColor=#0050ef;strokeWidth=2;" parent="legend" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="340" y="18" as="sourcePoint"/>
+                        <mxPoint x="365" y="18" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="lt3" value="Cloud API" style="text;fontSize=12;fontColor=#333;" parent="legend" vertex="1">
+                    <mxGeometry x="370" y="6" width="80" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="lt4" value="Green = compute: section (where eval RUNS)" style="text;fontSize=12;fontColor=#82b366;fontStyle=2;" parent="legend" vertex="1">
+                    <mxGeometry x="500" y="6" width="320" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="lt5" value="Yellow = tracking_backend: section (where results PUBLISH)" style="text;fontSize=12;fontColor=#d6b656;fontStyle=2;" parent="legend" vertex="1">
+                    <mxGeometry x="840" y="6" width="370" height="20" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

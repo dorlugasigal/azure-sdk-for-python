@@ -1,0 +1,47 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Azure AI Foundry dark theme */
+  --color-background: #1f1f1f;
+  --color-background-secondary: #323232;
+  --color-background-tertiary: #3d3d3d;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #d4d4d4;
+  --color-text-muted: #8a8a8a;
+  --color-border: #414141;
+  --color-border-subtle: #323232;
+  --color-accent: #c9aaf9;
+  --color-accent-hover: #b48ef0;
+  --color-accent-subtle: rgba(201, 170, 249, 0.12);
+  --color-success: #a0d89f;
+  --color-success-subtle: rgba(84, 176, 84, 0.10);
+  --color-success-strong: #107c10;
+  --color-success-badge: #10b981;
+  --color-warning: #f2c661;
+  --color-error: #d13438;
+  --color-error-bg: rgba(209, 52, 56, 0.12);
+  --color-error-text: #f1a0a8;
+  --color-error-badge: #d13438;
+  --border-radius: 12px;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

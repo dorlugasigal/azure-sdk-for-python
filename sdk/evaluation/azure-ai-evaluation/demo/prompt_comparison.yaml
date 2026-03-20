@@ -1,0 +1,32 @@
+experiment:
+  name: "prompt-strategy-comparison"
+
+  targets:
+    - name: "prompt_compare"
+      type: "custom"
+      args:
+        - prompt: ["baseline", "single_shot", "few_shot"]
+        - temperature: [0.7]
+        - max_tokens: [200]
+
+  dataset:
+    name: "qa_data"
+    type: "jsonl"
+    args:
+      data_path: "demo/data.jsonl"
+
+  metrics:
+    - name: "relevance"
+      mapping:
+        query: "dataset.question"
+        response: "model.answer"
+        context: "dataset.context"
+    - name: "f1_score"
+      mapping:
+        response: "model.answer"
+        ground_truth: "dataset.context"
+
+  connections:
+    default:
+      azure_endpoint: "https://foundry-evee-ko9z2s7c.cognitiveservices.azure.com/"
+      azure_deployment: "gpt-4.1-mini"

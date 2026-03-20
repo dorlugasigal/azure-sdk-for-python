@@ -1,0 +1,14 @@
+experiment:
+  name: "local-only-eval"
+
+  dataset:
+    name: "qa_data"
+    type: "jsonl"
+    args:
+      data_path: "demo/data.jsonl"
+
+  metrics:
+    - name: "f1_score"
+      mapping:
+        response: "dataset.answer"
+        ground_truth: "dataset.context"

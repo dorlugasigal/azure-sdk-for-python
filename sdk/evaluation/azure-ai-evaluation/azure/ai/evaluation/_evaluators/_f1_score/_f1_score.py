@@ -182,3 +182,25 @@ class F1ScoreEvaluator(EvaluatorBase):
         :rtype: Dict[str, float]
         """
         return super().__call__(*args, **kwargs)
+
+
+# === evee engine integration ===
+# Register this evaluator as an @metric for config-driven evaluation
+try:
+    from azure.ai.evaluation._engine.decorators import metric as _evee_metric, BaseMetric as _EveeBaseMetric
+
+    @_evee_metric(name='f1_score')
+    class _F1ScoreEveeMetric(_EveeBaseMetric):
+        """Bridge: real F1ScoreEvaluator registered as evee @metric."""
+        def __init__(self, connections_registry=None, context=None, **kwargs):
+            super().__init__(**kwargs)
+            self._evaluator = F1ScoreEvaluator()
+
+        def compute(self, response='', ground_truth='', **kwargs):
+            return self._evaluator(response=response, ground_truth=ground_truth)
+
+        def aggregate(self, scores):
+            vals = [s.get('f1_score', 0) for s in scores]
+            return {'f1_score_mean': round(sum(vals) / len(vals), 4)} if vals else {}
+except ImportError:
+    pass  # engine not installed

@@ -163,3 +163,46 @@ class CoherenceEvaluator(PromptyEvaluatorBase[Union[str, float]]):
         self._validator.validate_eval_input(kwargs)
 
         return await super()._real_call(**kwargs)
+
+
+# === evee engine integration ===
+try:
+    from azure.ai.evaluation._engine.decorators import metric as _evee_metric, BaseMetric as _EveeBaseMetric
+
+    @_evee_metric(name='coherence')
+    class _CoherenceEveeMetric(_EveeBaseMetric):
+        """Bridge: real CoherenceEvaluator registered as evee @metric."""
+        def __init__(self, connections_registry=None, context=None, **kwargs):
+            super().__init__(**kwargs)
+            self._evaluator = None
+            conn = connections_registry or {}
+            if not conn and context and hasattr(context, 'connections_registry'):
+                conn = context.connections_registry or {}
+            if conn:
+                first = list(conn.values())[0] if conn else {}
+                if hasattr(first, 'model_dump'):
+                    first = first.model_dump()
+                elif not isinstance(first, dict) and hasattr(first, '__dict__'):
+                    first = dict(first)
+                if isinstance(first, dict) and 'azure_endpoint' in first:
+                    model_config = {
+                        'azure_endpoint': first['azure_endpoint'],
+                        'azure_deployment': first.get('azure_deployment', 'gpt-4o'),
+                        'type': 'azure_openai',
+                    }
+                    from azure.identity import DefaultAzureCredential
+                    self._evaluator = CoherenceEvaluator(
+                        model_config=model_config,
+                        credential=DefaultAzureCredential(),
+                    )
+
+        def compute(self, query='', response='', **kwargs):
+            if self._evaluator:
+                return self._evaluator(query=query, response=response)
+            return {'coherence': 0.0, 'coherence_reason': 'no model configured'}
+
+        def aggregate(self, scores):
+            vals = [s.get('coherence', 0) for s in scores]
+            return {'coherence_mean': round(sum(vals) / len(vals), 2)} if vals else {}
+except ImportError:
+    pass

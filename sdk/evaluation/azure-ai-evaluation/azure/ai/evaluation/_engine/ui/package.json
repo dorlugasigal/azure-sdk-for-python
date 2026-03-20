@@ -1,0 +1,29 @@
+{
+  "name": "@evee/results-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Evee Results Viewer - Interactive UI for viewing and comparing experiment results",
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch",
+    "dev": "cross-env NODE_ENV=development npm run watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "1.1.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "overrides": {
+    "ajv": "8.18.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "4.7.0",
+    "cross-env": "7.0.3",
+    "typescript": "5.9.3",
+    "vite": "6.4.1",
+    "vite-plugin-singlefile": "2.3.0"
+  }
+}

@@ -1,0 +1,20 @@
+experiment:
+  name: "cloud-eval-demo"
+
+  dataset:
+    name: "qa_data"
+    type: "jsonl"
+    args:
+      data_path: "demo/data.jsonl"
+
+  metrics:
+    - name: "relevance"
+      mapping:
+        query: "dataset.question"
+        response: "dataset.answer"
+        context: "dataset.context"
+
+  connections:
+    default:
+      azure_endpoint: "https://foundry-evee-ko9z2s7c.cognitiveservices.azure.com/"
+      azure_deployment: "gpt-4.1-mini"
