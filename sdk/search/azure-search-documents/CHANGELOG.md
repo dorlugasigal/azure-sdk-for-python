@@ -73,7 +73,8 @@
 
 ### Breaking Changes
 
-> These changes apply to the latest preview release only and do not affect generally available versions.
+> These changes do not impact the API of stable versions such as 11.6.0.
+> Only code written against a beta version such as 11.7.0b1 may be affected.
 
 - Knowledge base naming and routing refresh:
   - Renamed the knowledge agent surface area to the knowledge base equivalents:
@@ -95,6 +96,58 @@
   - Replaced `azure.search.documents.indexes.models.SearchIndexKnowledgeSourceParameters.source_data_select` with `azure.search.documents.indexes.models.SearchIndexKnowledgeSourceParameters.source_data_fields`.
   - Added `azure.search.documents.indexes.models.SearchIndexKnowledgeSourceParameters.search_fields` for field mapping.
   - Added optional `azure.search.documents.indexes.models.SearchIndexKnowledgeSourceParameters.semantic_configuration_name`.
+
+## 11.6.0 (2025-10-10)
+
+### Features Added
+
+- Added `azure.search.documents.DocumentDebugInfo`.
+- Added `azure.search.documents.QueryDebugMode`.
+- Added `azure.search.documents.QueryResultDocumentSubscores`.
+- Added `azure.search.documents.SingleVectorFieldResult`.
+- Added `azure.search.documents.TextResult`.
+- Added `azure.search.documents.VectorsDebugInfo`.
+- Added new parameter `debug` in `azure.search.documents.SearchClient.search`.
+- Added `azure.search.documents.indexes.LexicalNormalizer`.
+- Added `azure.search.documents.indexes.LexicalNormalizerName`.
+- Added `azure.search.documents.indexes.AnalyzeTextOptions.normalizer_name`.
+- Added `azure.search.documents.indexes.CustomNormalizer`.
+- Added `azure.search.documents.indexes.DocumentIntelligenceLayoutSkill`.
+- Added `azure.search.documents.indexes.DocumentIntelligenceLayoutSkillExtractionOptions`.
+- Added `azure.search.documents.indexes.DocumentIntelligenceLayoutSkillChunkingProperties`.
+- Added `azure.search.documents.indexes.DocumentIntelligenceLayoutSkillChunkingUnit`.
+- Added `azure.search.documents.indexes.DocumentIntelligenceLayoutSkillMarkdownHeaderDepth`.
+- Added `azure.search.documents.indexes.DocumentIntelligenceLayoutSkillOutputFormat`.
+- Added `azure.search.documents.indexes.DocumentIntelligenceLayoutSkillOutputMode`.
+- Added `azure.search.documents.indexes.RankingOrder`.
+- Added `azure.search.documents.indexes.RescoringOptions`.
+- Added `azure.search.documents.indexes.SearchField.normalizer_name`.
+- Added `azure.search.documents.indexes.SearchIndex.normalizer`.
+- Added `azure.search.documents.indexes.SearchIndexerKnowledgeStoreParameters`.
+- Added `azure.search.documents.indexes.VectorSearchCompressionRescoreStorageMethod`.
+- Support for running `VectorQuery`s against sub-fields of complex fields.
+- Added support for `2025-09-01` service version.
+  - Support for reranker boosted scores in search results and the ability to sort results on either reranker or reranker
+    boosted scores in `SemanticConfiguration.rankingOrder`.
+  - Support for `VectorSearchCompression.RescoringOptions` to configure how vector compression handles the original
+    vector when indexing and how vectors are used during rescoring.
+  - Added `SearchIndex.description` to provide a textual description of the index.
+  - Support for `LexicalNormalizer` when defining `SearchIndex`, `SimpleField`, and `SearchableField` and the ability to
+    use it when analyzing text with `SearchIndexClient.analyzeText` and `SearchIndexAsyncClient.analyzeText`.
+  - Support `DocumentIntelligenceLayoutSkill` skillset skill and `OneLake` `SearchIndexerDataSourceConnection` data source.
+  - Support for `QueryDebugMode` in searching to retrieve detailed information about search processing. Only `vector` is
+    supported for `QueryDebugMode`.
+
+### Breaking Changes
+
+- `VectorSearchCompression.rerankWithOriginalVectors` and `VectorSearchCompression.defaultOversampling` don't work with
+  `2025-09-01` and were replaced by `VectorSearchCompression.RescoringOptions.enabledRescoring` and
+  `VectorSearchCompression.RescoringOptions.defaultOversampling`. If using `2024-07-01` continue using the old properties,
+  otherwise if using `2025-09-01` use the new properties in `RescoringOptions`.
+
+### Other Changes
+
+- Updated default API version to `2025-09-01`.
 
 ## 11.7.0b1 (2025-09-05)
 
