@@ -180,3 +180,4 @@ uv.lock
 
 # Sphinx generated documentation
 website/
+sdk/evaluation/azure-ai-evaluation/experiment/output/
