@@ -28,6 +28,19 @@ experiment:
       mapping:
         response: "model.answer"
         query: "dataset.query"
+    - name: "task_adherence"
+      mapping:
+        query: "dataset.query"
+        response: "model.output_items"
+    - name: "intent_resolution"
+      mapping:
+        query: "dataset.query"
+        response: "model.output_items"
+    - name: "tool_call_accuracy"
+      mapping:
+        query: "dataset.query"
+        response: "model.output_items"
+        tool_definitions: "model.tool_definitions"
 
   connections:
     default:

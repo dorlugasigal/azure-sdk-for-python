@@ -98,8 +98,8 @@ class TargetVariantConfig(BaseModel):
     # For azure_ai_agent targets
     agent_name: Optional[str] = None
     agent_version: Optional[str] = None
-    azure_ai_project: Optional[str] = None  # Foundry project endpoint URL (needed for local agent eval)
-    instructions: Optional[str] = None  # Developer/system instructions for agent targets
+    azure_ai_project: Optional[str] = None
+    instructions: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod

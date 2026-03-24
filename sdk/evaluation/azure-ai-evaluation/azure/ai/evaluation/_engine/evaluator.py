@@ -49,6 +49,172 @@ def _extract_tool_definitions_from_trace(agent_trace) -> list:
     return []
 
 
+def _normalize_output_items(items: list) -> list:
+    """Normalize output_items from any framework to the OpenAI message schema.
+
+    SDK evaluators expect:
+      - content (not contents)
+      - tool_call (not function_call)
+      - tool_result (not function_result)
+
+    This handles MAF format, OpenAI format, LangChain format.
+    """
+    import json as _json
+    normalized = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role", "")
+        # MAF uses "contents", OpenAI uses "content"
+        raw_content = item.get("content") or item.get("contents")
+
+        if role == "assistant":
+            new_content = []
+            if isinstance(raw_content, list):
+                for c in raw_content:
+                    if not isinstance(c, dict):
+                        new_content.append({"type": "text", "text": str(c)})
+                        continue
+                    ctype = c.get("type", "")
+                    if ctype in ("function_call", "tool_call"):
+                        args = c.get("arguments", {})
+                        if isinstance(args, str):
+                            try:
+                                args = _json.loads(args)
+                            except (ValueError, _json.JSONDecodeError):
+                                pass
+                        new_content.append({
+                            "type": "tool_call",
+                            "tool_call_id": c.get("tool_call_id") or c.get("call_id", ""),
+                            "name": c.get("name", ""),
+                            "arguments": args,
+                        })
+                    elif ctype == "text":
+                        new_content.append({"type": "text", "text": c.get("text", "")})
+                    else:
+                        new_content.append(c)
+            elif isinstance(raw_content, str) and raw_content:
+                new_content = [{"type": "text", "text": raw_content}]
+
+            # Handle LangChain-style tool_calls at message level
+            if "tool_calls" in item and isinstance(item["tool_calls"], list):
+                for tc in item["tool_calls"]:
+                    if isinstance(tc, dict):
+                        args = tc.get("arguments") or tc.get("args", {})
+                        if isinstance(args, str):
+                            try:
+                                args = _json.loads(args)
+                            except (ValueError, _json.JSONDecodeError):
+                                pass
+                        new_content.append({
+                            "type": "tool_call",
+                            "tool_call_id": tc.get("tool_call_id") or tc.get("id") or tc.get("call_id", ""),
+                            "name": tc.get("name", ""),
+                            "arguments": args,
+                        })
+
+            if new_content:
+                normalized.append({"role": "assistant", "content": new_content})
+
+        elif role == "tool":
+            if isinstance(raw_content, list):
+                new_content = []
+                for c in raw_content:
+                    if isinstance(c, dict) and c.get("type") in ("function_result", "tool_result"):
+                        call_id = c.get("tool_call_id") or c.get("call_id", "")
+                        result_val = c.get("tool_result") or c.get("result", "")
+                        new_content.append({
+                            "type": "tool_result",
+                            "tool_call_id": call_id,
+                            "tool_result": str(result_val),
+                        })
+                    else:
+                        new_content.append(c)
+                tool_call_id = item.get("tool_call_id", "")
+                if not tool_call_id and raw_content and isinstance(raw_content[0], dict):
+                    tool_call_id = raw_content[0].get("call_id", "")
+                normalized.append({"role": "tool", "tool_call_id": tool_call_id, "content": new_content})
+            elif isinstance(raw_content, str):
+                normalized.append({
+                    "role": "tool",
+                    "tool_call_id": item.get("tool_call_id", ""),
+                    "content": [{"type": "tool_result", "tool_call_id": item.get("tool_call_id", ""), "tool_result": raw_content}],
+                })
+        else:
+            normalized.append(item)
+
+    return normalized
+
+
+def _normalize_tool_definitions(tool_defs: list) -> list:
+    """Normalize tool definitions from any format to OpenAI function schema.
+
+    Handles:
+    - Raw Python functions (with annotations/docstrings)
+    - MAF FunctionTool objects (have .to_json_schema_spec())
+    - LangChain tools (have .name, .description, .args_schema)
+    - Already-normalized dicts (pass through)
+    """
+    normalized = []
+    for tool in tool_defs:
+        if isinstance(tool, dict):
+            # Already a dict — pass through
+            normalized.append(tool)
+        elif hasattr(tool, "to_json_schema_spec"):
+            # MAF FunctionTool
+            normalized.append(tool.to_json_schema_spec())
+        elif hasattr(tool, "args_schema") and hasattr(tool, "name"):
+            # LangChain tool
+            schema = {}
+            if tool.args_schema:
+                try:
+                    schema = tool.args_schema.model_json_schema()
+                except Exception:
+                    pass
+            normalized.append({
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": getattr(tool, "description", ""),
+                    "parameters": schema,
+                },
+            })
+        elif callable(tool):
+            # Raw Python function — extract from signature + docstring
+            import inspect
+            sig = inspect.signature(tool)
+            props = {}
+            required = []
+            for pname, param in sig.parameters.items():
+                if pname == "self":
+                    continue
+                prop = {"type": "string"}
+                annotation = param.annotation
+                if annotation != inspect.Parameter.empty:
+                    ann_str = str(annotation)
+                    if "int" in ann_str:
+                        prop["type"] = "integer"
+                    elif "float" in ann_str:
+                        prop["type"] = "number"
+                    elif "bool" in ann_str:
+                        prop["type"] = "boolean"
+                if param.default is inspect.Parameter.empty:
+                    required.append(pname)
+                props[pname] = prop
+            normalized.append({
+                "type": "function",
+                "function": {
+                    "name": getattr(tool, "__name__", "unknown"),
+                    "description": getattr(tool, "__doc__", "") or "",
+                    "parameters": {"type": "object", "properties": props, "required": required},
+                },
+            })
+        else:
+            # Unknown — try str representation
+            normalized.append({"type": "function", "function": {"name": str(tool)}})
+    return normalized
+
+
 class ModelEvaluator:
     """Main evaluator for assessing AI models."""
 
@@ -569,14 +735,27 @@ class ModelEvaluator:
         max_workers = self.config.experiment.max_workers or 4
 
         if total_models > 1:
-            # Parallel evaluation of multiple variants with shared progress display
             failed_records = self._evaluate_all_parallel(dataset, max_workers)
         else:
-            # Single variant — simple sequential path
             for model_name, model_data in self.targets_registry.items():
                 output_path = self._current_experiment_dir / f"{model_name}_results.jsonl"
                 failed = self._evaluate_model(dataset, model_name, model_data, output_path, max_workers)
                 failed_records += failed
+
+        # Collect aggregated metrics from all model summaries
+        all_aggregated: Dict[str, Any] = {}
+        for model_name in self.targets_registry:
+            summary_path = self._current_experiment_dir / f"{model_name}_summary.json"
+            if summary_path.exists():
+                try:
+                    model_summary = json.loads(summary_path.read_text())
+                    model_agg = model_summary.get("aggregated_evaluators", {})
+                    if total_models == 1:
+                        all_aggregated = model_agg
+                    else:
+                        all_aggregated[model_name] = model_agg
+                except Exception:
+                    pass
 
         summary = {
             "status": "completed_with_errors" if failed_records > 0 else "completed",
@@ -584,6 +763,7 @@ class ModelEvaluator:
             "total_records": total_records,
             "failed_records": failed_records,
             "models_evaluated": total_models,
+            "aggregated_evaluators": all_aggregated,
         }
 
         self.tracking_backend.on_experiment_completed(
@@ -877,12 +1057,23 @@ class ModelEvaluator:
                         if tool_defs:
                             model_output["tool_definitions"] = tool_defs
                 elif "output_items" not in model_output and "answer" in model_output:
-                    # No trace data — create minimal conversation from answer text
-                    # so agent evaluators don't get empty responses
+                    # No trace data and no output_items — create minimal conversation
+                    # from answer text so agent evaluators don't get empty responses
                     answer = model_output["answer"]
                     model_output["output_items"] = [
                         {"role": "assistant", "content": [{"type": "text", "text": str(answer)}]}
                     ]
+
+                # Normalize output_items to OpenAI schema regardless of source
+                # (handles MAF contents/function_call → content/tool_call conversion)
+                if "output_items" in model_output:
+                    model_output["output_items"] = _normalize_output_items(model_output["output_items"])
+
+                # Normalize tool_definitions if they're raw function/FunctionTool objects
+                if "tool_definitions" in model_output:
+                    model_output["tool_definitions"] = _normalize_tool_definitions(
+                        model_output["tool_definitions"]
+                    )
 
             # Create inference output — attach trace data if captured
             inference_output = InferenceOutput(

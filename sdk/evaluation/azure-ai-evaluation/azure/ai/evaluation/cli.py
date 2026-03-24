@@ -95,8 +95,17 @@ def _show_results_table(results: Dict[str, Any]) -> None:
             table.add_row("Output", output_path_str)
 
         for metric_name, value in aggregated.items():
-            display = f"{value:.4f}" if isinstance(value, float) else str(value)
-            table.add_row(metric_name, display)
+            if isinstance(value, dict):
+                # Aggregated evaluator with sub-metrics — show the primary score
+                for sub_key, sub_val in value.items():
+                    if isinstance(sub_val, float):
+                        table.add_row(sub_key, f"{sub_val:.4f}")
+                    elif isinstance(sub_val, (int, str)):
+                        table.add_row(sub_key, str(sub_val))
+            elif isinstance(value, float):
+                table.add_row(metric_name, f"{value:.4f}")
+            else:
+                table.add_row(metric_name, str(value))
 
         _console.print(table)
     else:
@@ -108,8 +117,16 @@ def _show_results_table(results: Dict[str, Any]) -> None:
         if output_path_str:
             click.echo(f"  Output:    {output_path_str}")
         for metric_name, value in aggregated.items():
-            display = f"{value:.4f}" if isinstance(value, float) else str(value)
-            click.echo(f"  {metric_name}: {display}")
+            if isinstance(value, dict):
+                for sub_key, sub_val in value.items():
+                    if isinstance(sub_val, float):
+                        click.echo(f"  {sub_key}: {sub_val:.4f}")
+                    elif isinstance(sub_val, (int, str)):
+                        click.echo(f"  {sub_key}: {sub_val}")
+            elif isinstance(value, float):
+                click.echo(f"  {metric_name}: {value:.4f}")
+            else:
+                click.echo(f"  {metric_name}: {value}")
 
 
 # ---------------------------------------------------------------------------

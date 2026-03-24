@@ -79,6 +79,8 @@ class WeatherAgentLocalTarget(BaseTarget):
         from azure.identity import AzureCliCredential
         from agent_framework.azure import AzureOpenAIResponsesClient
 
+        self._tools = [get_weather, bring_umbrella]
+
         client = AzureOpenAIResponsesClient(
             project_endpoint=self.PROJECT_ENDPOINT,
             deployment_name=self.DEPLOYMENT,
@@ -91,18 +93,17 @@ class WeatherAgentLocalTarget(BaseTarget):
                 "Use the get_weather tool to check conditions, then the bring_umbrella tool "
                 "to advise on umbrella needs. Be concise and practical."
             ),
-            tools=[get_weather, bring_umbrella],
+            tools=self._tools,
         )
 
     def infer(self, input: Dict[str, Any]) -> Dict[str, Any]:
-        """Run the MAF agent and return just the answer.
-
-        The engine's OTel tracing automatically captures all LLM calls,
-        tool invocations, and messages — no manual tracking needed.
-        """
+        """Run the MAF agent and return the answer with structured data."""
         query = input.get("query") or input.get("question") or input.get("prompt") or str(list(input.values())[0])
 
         result = _run_async(self._agent.run(query))
 
-        # Just return the answer — engine auto-enriches with trace data
-        return {"answer": result.text or ""}
+        return {
+            "answer": result.text or "",
+            "output_items": [msg.to_dict() for msg in result.messages],
+            "tool_definitions": self._tools,  # Engine normalizes automatically
+        }
