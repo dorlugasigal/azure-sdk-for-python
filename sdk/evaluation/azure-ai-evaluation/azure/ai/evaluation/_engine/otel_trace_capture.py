@@ -104,10 +104,21 @@ class AgentTrace:
         tools = []
         seen_ids: set = set()
 
-        # From spans (MAF format — execute_tool spans + output.messages on chat spans)
+        # From spans (MAF/Azure tracer — execute_tool spans + output.messages on chat spans)
         for span in self.spans:
             if span.operation_name == "execute_tool":
                 tc_id = span.attributes.get("gen_ai.tool.call.id", "")
+                result_raw = span.attributes.get("gen_ai.tool.call.result")
+
+                # Azure tracer puts tool_call_id inside the result JSON
+                if not tc_id and result_raw:
+                    try:
+                        parsed = json.loads(result_raw) if isinstance(result_raw, str) else result_raw
+                        if isinstance(parsed, dict):
+                            tc_id = parsed.get("tool_call_id", "")
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
                 if tc_id and tc_id not in seen_ids:
                     seen_ids.add(tc_id)
                     args = span.attributes.get("gen_ai.tool.call.arguments", {})
@@ -120,7 +131,7 @@ class AgentTrace:
                         "id": tc_id,
                         "name": span.attributes.get("gen_ai.tool.name", ""),
                         "arguments": args,
-                        "result": span.attributes.get("gen_ai.tool.call.result"),
+                        "result": result_raw,
                         "span_id": span.span_id,
                     })
 
@@ -227,6 +238,17 @@ class AgentTrace:
             if span.operation_name == "execute_tool":
                 tc_id = span.attributes.get("gen_ai.tool.call.id", "")
                 result = span.attributes.get("gen_ai.tool.call.result", "")
+
+                # Azure tracer puts tool_call_id inside the result JSON
+                if not tc_id and result:
+                    try:
+                        parsed = json.loads(result) if isinstance(result, str) else result
+                        if isinstance(parsed, dict):
+                            tc_id = parsed.get("tool_call_id", "")
+                            result = parsed.get("content", result)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
                 if tc_id and tc_id not in seen_result_ids:
                     seen_result_ids.add(tc_id)
                     messages.append({"role": "tool", "tool_call_id": tc_id,
@@ -450,6 +472,18 @@ class OTelTraceCapture:
             logger.info("OTel trace capture: MAF instrumentation enabled")
         except ImportError:
             pass  # MAF not installed
+
+        # Enable LangChain Azure AI OTel tracer if available
+        # This callback emits full GenAI semconv spans including gen_ai.tool.definitions,
+        # execute_tool spans with arguments/results, and invoke_agent spans.
+        # It's attached as a callback to LangChain runs automatically.
+        self._langchain_tracer = None
+        try:
+            from langchain_azure_ai.callbacks.tracers import AzureAIOpenTelemetryTracer
+            self._langchain_tracer = AzureAIOpenTelemetryTracer()
+            logger.info("OTel trace capture: LangChain Azure AI tracer available")
+        except ImportError:
+            pass  # langchain-azure-ai not installed
 
         # Content capture env vars
         if self._capture_content:

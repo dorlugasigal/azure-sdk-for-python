@@ -80,7 +80,15 @@ class WeatherAgentLangChainTarget(BaseTarget):
         """Run the LangChain agent and return just the answer."""
         query = input.get("query") or input.get("question") or input.get("prompt") or str(list(input.values())[0])
 
-        result = self._agent.invoke({"messages": [("user", query)]})
+        # Use Azure AI OTel tracer if available (provides tool definitions + full traces)
+        config = {}
+        try:
+            from langchain_azure_ai.callbacks.tracers import AzureAIOpenTelemetryTracer
+            config["callbacks"] = [AzureAIOpenTelemetryTracer()]
+        except ImportError:
+            pass
+
+        result = self._agent.invoke({"messages": [("user", query)]}, config=config)
 
         final = result["messages"][-1].content if hasattr(result["messages"][-1], "content") else str(result["messages"][-1])
 
