@@ -7,6 +7,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import importlib
+import importlib.util
 import json
 import os
 import shutil
@@ -78,7 +79,7 @@ def _show_results_table(results: Dict[str, Any]) -> None:
     failed = results.get("failed_records", 0)
     status = results.get("status", "completed")
     output_path_str = results.get("output_path", "")
-    aggregated = results.get("aggregated_metrics", {})
+    aggregated = results.get("aggregated_evaluators", results.get("aggregated_metrics", {}))
 
     if _HAS_RICH:
         table = Table(title="Evaluation Results", border_style="green")
@@ -173,31 +174,43 @@ _BUILTIN_EVALUATORS = [
 # ---------------------------------------------------------------------------
 
 def _import_local_components(directory: str) -> None:
-    """Import Python files in directory that contain @target, @metric, or @dataset decorators."""
-    for fname in os.listdir(directory):
-        if not fname.endswith(".py") or fname.startswith("_") or fname.startswith("demo_"):
-            continue
-        fpath = os.path.join(directory, fname)
-        try:
-            with open(fpath) as f:
-                content = f.read()
-            if "@target" in content or "@model" in content or "@metric" in content or "@dataset" in content:
-                tree = ast.parse(content)
-                has_decorator = any(
-                    isinstance(node, ast.ClassDef)
-                    and any(
-                        (isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and d.func.id in ("target", "model", "metric", "dataset"))
-                        or (isinstance(d, ast.Name) and d.id in ("target", "model", "metric", "dataset"))
-                        for d in node.decorator_list
+    """Import Python files in directory (and subdirs) that contain @target, @evaluator, or @dataset decorators."""
+    decorator_names = ("target", "model", "metric", "evaluator", "dataset")
+    decorator_pattern = "|".join(f"@{d}" for d in decorator_names)
+
+    for root, dirs, files in os.walk(directory):
+        # Skip hidden dirs, __pycache__, node_modules, .venv
+        dirs[:] = [d for d in dirs if not d.startswith((".","_")) and d not in ("node_modules", "venv")]
+        for fname in files:
+            if not fname.endswith(".py") or fname.startswith("_") or fname.startswith("demo_"):
+                continue
+            fpath = os.path.join(root, fname)
+            try:
+                with open(fpath) as f:
+                    content = f.read()
+                if any(f"@{d}" in content for d in decorator_names):
+                    tree = ast.parse(content)
+                    has_decorator = any(
+                        isinstance(node, ast.ClassDef)
+                        and any(
+                            (isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and d.func.id in decorator_names)
+                            or (isinstance(d, ast.Name) and d.id in decorator_names)
+                            for d in node.decorator_list
+                        )
+                        for node in ast.walk(tree)
                     )
-                    for node in ast.walk(tree)
-                )
-                if has_decorator:
-                    module_name = fname[:-3]
-                    if module_name not in sys.modules:
-                        importlib.import_module(module_name)
-        except Exception:
-            pass
+                    if has_decorator:
+                        # Build module name relative to directory
+                        rel_path = os.path.relpath(fpath, directory)
+                        module_name = rel_path[:-3].replace(os.sep, ".")
+                        if module_name not in sys.modules:
+                            spec = importlib.util.spec_from_file_location(module_name, fpath)
+                            if spec and spec.loader:
+                                mod = importlib.util.module_from_spec(spec)
+                                sys.modules[module_name] = mod
+                                spec.loader.exec_module(mod)
+            except Exception:
+                pass
 
 
 def _discover_project_components() -> Dict[str, List[str]]:
@@ -286,15 +299,16 @@ def main(ctx):
 def run(path, config, dataset_path, env, remote, models, no_tracking, auto_approve, output):
     """Run evaluation.
 
-    By default, runs locally. Use --remote for configured compute backend.
+    By default, runs locally with tracking if configured.
+    Use --remote for Foundry cloud compute. Use --no-tracking to skip publishing.
 
     \b
     Examples:
-        local-evals run                           # Run locally
-        local-evals run --remote                   # Run on Foundry cloud
-        local-evals run -c custom.yaml             # Custom config
-        local-evals run -m target_a,target_b       # Filter targets
-        local-evals run --no-tracking              # Skip result tracking
+        local-evals run                           # Run locally (publishes if tracking configured)
+        local-evals run --no-tracking             # Run locally, skip publishing
+        local-evals run --remote                  # Run on Foundry cloud
+        local-evals run -c custom.yaml            # Custom config
+        local-evals run -m target_a,target_b      # Filter targets
     """
     with working_directory(path):
         # Banner
@@ -319,7 +333,7 @@ def run(path, config, dataset_path, env, remote, models, no_tracking, auto_appro
         cfg = _load_config_safe(config_path)
 
         compute_mode = "remote (Foundry)" if remote else "local"
-        metric_names = ", ".join(m.name for m in cfg.experiment.metrics) if cfg else "—"
+        metric_names = ", ".join(m.name for m in cfg.experiment.evaluators) if cfg else "—"
         dataset_name = cfg.experiment.dataset.name if cfg else "—"
         experiment_name = cfg.experiment.name if cfg else "—"
 
@@ -593,7 +607,7 @@ def validate(config, env):
 
         info: Dict[str, str] = {
             "Targets": str(len(cfg.experiment.targets)),
-            "Metrics": str(len(cfg.experiment.metrics)),
+            "Metrics": str(len(cfg.experiment.evaluators)),
             "Dataset": cfg.experiment.dataset.name if cfg.experiment.dataset else "—",
             "Output": getattr(cfg.experiment, "output_path", "experiment/output"),
         }
@@ -738,21 +752,56 @@ def view(port, no_browser):
         all_records = []
         all_metrics = {}
 
-        def _flatten_agg(agg):
-            """Flatten aggregated_metrics to plain numeric values for the UI.
+        def _find_primary_score(evaluator_name, values_dict):
+            """Find the primary score from an evaluator's aggregated dict.
 
-            Evee UI expects: {"f1_score_mean": 0.25, "number_of_records": 10}
-            Our format is:   {"f1_score": {"f1_score_mean": 0.25}}
-            Flatten nested dicts by hoisting their numeric sub-keys to top level.
+            Heuristic (matches Foundry portal behavior — one score per evaluator):
+            1. {evaluator_name}_mean  (e.g. coherence → coherence_mean)
+            2. {evaluator_name}       (exact key)
+            3. Key containing 'score' AND ending in '_mean'
+            4. First key ending in '_mean'
+            5. Key named 'score'
+            6. First numeric value
+            """
+            name = evaluator_name.lower()
+            # 1. evaluator_name + _mean
+            if f"{name}_mean" in values_dict:
+                return values_dict[f"{name}_mean"]
+            # 2. exact evaluator name as key
+            if name in values_dict and isinstance(values_dict[name], (int, float)):
+                return values_dict[name]
+            # 3. key with 'score' and '_mean'
+            for k, v in values_dict.items():
+                if isinstance(v, (int, float)) and "score" in k and k.endswith("_mean"):
+                    return v
+            # 4. first key ending in _mean
+            for k, v in values_dict.items():
+                if isinstance(v, (int, float)) and k.endswith("_mean"):
+                    return v
+            # 5. key named 'score'
+            if "score" in values_dict and isinstance(values_dict["score"], (int, float)):
+                return values_dict["score"]
+            # 6. first numeric value
+            for v in values_dict.values():
+                if isinstance(v, (int, float)):
+                    return v
+            return None
+
+        def _flatten_agg(agg):
+            """Extract one primary score per evaluator for the comparison view.
+
+            Matches Foundry portal behavior: one score per evaluator (e.g.
+            coherence: 4.0, response_completeness: 0.976) instead of hoisting
+            all sub-keys to top level.
             """
             flat = {}
-            for metric_name, metric_val in agg.items():
-                if isinstance(metric_val, dict):
-                    for sub_key, sub_val in metric_val.items():
-                        if isinstance(sub_val, (int, float)):
-                            flat[sub_key] = sub_val
-                elif isinstance(metric_val, (int, float)):
-                    flat[metric_name] = metric_val
+            for evaluator_name, evaluator_val in agg.items():
+                if isinstance(evaluator_val, dict):
+                    primary = _find_primary_score(evaluator_name, evaluator_val)
+                    if primary is not None:
+                        flat[evaluator_name] = primary
+                elif isinstance(evaluator_val, (int, float)):
+                    flat[evaluator_name] = evaluator_val
             return flat
 
         for summary_file in sorted(exp_path.glob("*_summary.json")):
@@ -769,11 +818,11 @@ def view(port, no_browser):
                         if line.strip():
                             records.append(json.loads(line))
 
-            agg = _flatten_agg(summary_data.get("aggregated_metrics", {}))
-            # Add standard overview metrics
+            agg = _flatten_agg(summary_data.get("aggregated_evaluators", summary_data.get("aggregated_metrics", {})))
+            # Add standard overview
             agg["number_of_records"] = summary_data.get("total_records", len(records))
             # Compute average response time from records
-            times = [r.get("system_metrics", {}).get("response_time", {}).get("response_time_ms", 0) for r in records]
+            times = [r.get("system_evaluators", r.get("system_metrics", {})).get("response_time", {}).get("response_time_ms", 0) for r in records]
             if times:
                 agg["average_response_time_ms"] = sum(times) / len(times)
 
@@ -791,7 +840,7 @@ def view(port, no_browser):
                 "model_display_name": display_name,
                 "summary": {
                     "run_id": model_name,
-                    "aggregated_metrics": agg,
+                    "aggregated_evaluators": agg,
                     "tags": tags,
                 },
                 "records": records,
@@ -805,7 +854,7 @@ def view(port, no_browser):
         return {
             "summary": {
                 "run_id": exp_path.name,
-                "aggregated_metrics": all_metrics,
+                "aggregated_evaluators": all_metrics,
                 "tags": {},
             },
             "records": all_records,

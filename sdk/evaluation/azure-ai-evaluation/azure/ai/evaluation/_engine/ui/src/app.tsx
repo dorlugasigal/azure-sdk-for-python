@@ -20,7 +20,7 @@ import "./global.css";
 // Types
 // =============================================================================
 
-interface AggregatedMetrics {
+interface AggregatedEvaluators {
   number_of_records: number;
   average_response_time_ms: number;
   [key: string]: number;
@@ -28,11 +28,11 @@ interface AggregatedMetrics {
 
 interface ExperimentRun {
   run_id: string;
-  aggregated_metrics: AggregatedMetrics;
+  aggregated_evaluators: AggregatedEvaluators;
   tags: Record<string, string | number>;
 }
 
-interface MetricValue {
+interface EvaluatorValue {
   score?: number;
   match?: boolean;
   f1_score?: number;
@@ -53,8 +53,8 @@ interface ExperimentRecord {
   };
   args: Record<string, unknown>;
   run_id: string;
-  metrics: Record<string, MetricValue>;
-  system_metrics: { response_time?: { response_time_ms: number } };
+  evaluators: Record<string, EvaluatorValue>;
+  system_evaluators: { response_time?: { response_time_ms: number } };
   model_display_name: string;
   metadata: Record<string, unknown>;
 }
@@ -472,14 +472,14 @@ const styles = {
     border: "1px solid var(--color-success, #a0d89f)",
     color: "var(--color-success, #a0d89f)",
   } as CSSProperties,
-  metricsDetail: {
+  evaluatorsDetail: {
     marginTop: "12px",
     padding: "14px",
     background: "var(--color-background)",
     borderRadius: "8px",
     border: "1px solid var(--color-border)",
   } as CSSProperties,
-  metricsDetailTitle: {
+  evaluatorsDetailTitle: {
     fontSize: "12px",
     fontWeight: 600,
     marginBottom: "10px",
@@ -487,7 +487,7 @@ const styles = {
     textTransform: "uppercase" as const,
     letterSpacing: "0.04em",
   } as CSSProperties,
-  metricsDetailGrid: {
+  evaluatorsDetailGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
     gap: "10px",
@@ -563,10 +563,10 @@ const styles = {
 // Utility Functions
 // =============================================================================
 
-function getBaselineColor(value: number, baselineValue: number, metricKey: string): string | undefined {
+function getBaselineColor(value: number, baselineValue: number, evaluatorKey: string): string | undefined {
   const delta = value - baselineValue;
   if (Math.abs(delta) < 0.0005) return undefined;
-  const better = isHigherBetter(metricKey) ? delta > 0 : delta < 0;
+  const better = isHigherBetter(evaluatorKey) ? delta > 0 : delta < 0;
   return better ? "var(--color-success)" : "var(--color-error)";
 }
 
@@ -580,17 +580,57 @@ function formatMetricName(key: string): string {
     .replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
-function formatMetricValue(value: number): string {
+function formatEvaluatorValue(value: number): string {
   if (Math.abs(value) > 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
   if (Math.abs(value) < 0.01 && value !== 0) return value.toExponential(2);
   return value.toFixed(3);
 }
 
+/** Extract the primary numeric score from an evaluator result dict.
+ *  Mirrors the Python _extract_score / _find_primary_score heuristic and
+ *  the Foundry PythonGrader pass-through logic. */
+function extractPrimaryScore(evalValue: Record<string, unknown>, evaluatorKey?: string): number | null {
+  if (typeof evalValue === "number") return evalValue as number;
+  if (typeof evalValue !== "object" || evalValue === null) return null;
+  // 1. Try evaluator name as key (e.g. evaluators.coherence.coherence)
+  if (evaluatorKey) {
+    const v = evalValue[evaluatorKey];
+    if (typeof v === "number") return v;
+  }
+  // 2. Try common keys: score, value
+  for (const k of ["score", "value"]) {
+    const v = evalValue[k];
+    if (typeof v === "number") return v;
+  }
+  // 3. First numeric value (skip strings, booleans, objects)
+  for (const v of Object.values(evalValue)) {
+    if (typeof v === "number") return v;
+  }
+  return null;
+}
+
+/** Compute real per-record pass rate like Foundry: any positive grader score = pass. */
+function computePassRate(model: ModelData, evaluatorKey: string): { passed: number; total: number } {
+  const records = model.records || [];
+  let passed = 0;
+  let total = 0;
+  for (const record of records) {
+    const evalData = (record.evaluators || {})[evaluatorKey];
+    if (!evalData) continue;
+    total++;
+    const score = extractPrimaryScore(evalData, evaluatorKey);
+    if (score !== null && score > 0) passed++;
+  }
+  // Fall back to record count if no evaluator data found
+  if (total === 0) total = model.summary.aggregated_evaluators.number_of_records || records.length || 1;
+  return { passed, total };
+}
+
 /** Format overview values like counts and response times as clean integers. */
-function formatOverviewValue(value: number, metricKey: string): string {
-  if (metricKey === "average_response_time_ms") return `${value.toFixed(0)} ms`;
-  if (metricKey === "number_of_records") return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  return formatMetricValue(value);
+function formatOverviewValue(value: number, evaluatorKey: string): string {
+  if (evaluatorKey === "average_response_time_ms") return `${value.toFixed(0)} ms`;
+  if (evaluatorKey === "number_of_records") return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return formatEvaluatorValue(value);
 }
 
 /** Get a short display name for a model, preferring model_display_name over model_name */
@@ -621,7 +661,7 @@ function groupModels(models: ModelData[]): ModelGroup[] {
 function collectAllMetricKeys(models: ModelData[]): string[] {
   const keys = new Set<string>();
   for (const model of models) {
-    for (const key of Object.keys(model.summary.aggregated_metrics)) {
+    for (const key of Object.keys(model.summary.aggregated_evaluators)) {
       keys.add(key);
     }
   }
@@ -642,8 +682,8 @@ function collectAllTagKeys(models: ModelData[]): string[] {
 
 
 /** Check if a metric is "higher is better" (true for most; false for response time, fail counts) */
-function isHigherBetter(metricKey: string): boolean {
-  const lower = metricKey.toLowerCase();
+function isHigherBetter(evaluatorKey: string): boolean {
+  const lower = evaluatorKey.toLowerCase();
   if (lower.includes("response_time") || lower.includes("fail count") || lower.includes("tokens")) return false;
   return true;
 }
@@ -659,29 +699,29 @@ function getRecordSearchableText(record: ExperimentRecord): string {
   return parts.filter(Boolean).join(" ").toLowerCase();
 }
 
-function getMetricSummary(
-  metrics: Record<string, MetricValue>
+function getEvaluatorSummary(
+  evaluators: Record<string, EvaluatorValue>
 ): Array<{ name: string; value: number | boolean; type: "score" | "boolean" }> {
   const summary: Array<{ name: string; value: number | boolean; type: "score" | "boolean" }> = [];
 
-  for (const [metricName, metricValue] of Object.entries(metrics)) {
-    if (typeof metricValue !== "object" || metricValue === null) continue;
+  for (const [evaluatorName, evaluatorValue] of Object.entries(evaluators)) {
+    if (typeof evaluatorValue !== "object" || evaluatorValue === null) continue;
 
-    if (typeof metricValue.score === "number") {
-      summary.push({ name: metricName, value: metricValue.score, type: "score" });
-    } else if (typeof metricValue.f1_score === "number") {
-      summary.push({ name: metricName, value: metricValue.f1_score, type: "score" });
-    } else if (typeof metricValue.match === "boolean") {
-      summary.push({ name: metricName, value: metricValue.match, type: "boolean" });
+    if (typeof evaluatorValue.score === "number") {
+      summary.push({ name: evaluatorName, value: evaluatorValue.score, type: "score" });
+    } else if (typeof evaluatorValue.f1_score === "number") {
+      summary.push({ name: evaluatorName, value: evaluatorValue.f1_score, type: "score" });
+    } else if (typeof evaluatorValue.match === "boolean") {
+      summary.push({ name: evaluatorName, value: evaluatorValue.match, type: "boolean" });
     } else {
       // Extract numeric values from nested metric objects (e.g. pass_at_k)
-      for (const [subKey, subVal] of Object.entries(metricValue)) {
+      for (const [subKey, subVal] of Object.entries(evaluatorValue)) {
         if (typeof subVal === "number") {
-          summary.push({ name: `${metricName}.${subKey}`, value: subVal, type: "score" });
+          summary.push({ name: `${evaluatorName}.${subKey}`, value: subVal, type: "score" });
         } else if (typeof subVal === "object" && subVal !== null && !Array.isArray(subVal)) {
           for (const [innerKey, innerVal] of Object.entries(subVal)) {
             if (typeof innerVal === "number") {
-              summary.push({ name: `${metricName}.${subKey}.${innerKey}`, value: innerVal, type: "score" });
+              summary.push({ name: `${evaluatorName}.${subKey}.${innerKey}`, value: innerVal, type: "score" });
             }
           }
         }
@@ -709,9 +749,9 @@ interface RecordViewProps {
 function RecordView({ record, index }: RecordViewProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const responseTime = record.system_metrics.response_time?.response_time_ms ?? 0;
-  const metricEntries = Object.entries(record.metrics);
-  const metricSummary = getMetricSummary(record.metrics);
+  const responseTime = record.system_evaluators.response_time?.response_time_ms ?? 0;
+  const evaluatorEntries = Object.entries(record.evaluators);
+  const evaluatorSummary = getEvaluatorSummary(record.evaluators);
 
   const displayQuestion =
     record.record.question ||
@@ -745,7 +785,7 @@ function RecordView({ record, index }: RecordViewProps) {
           </div>
         </div>
         <div style={styles.recordMetrics}>
-          {metricSummary.map((metric) => (
+          {evaluatorSummary.map((metric) => (
             <span key={metric.name} style={styles.miniMetric}>
               <span style={{ color: "var(--color-text-muted, var(--color-text-secondary))", fontSize: "12px" }}>
                 {formatMetricName(metric.name).replace(/ /g, "").slice(0, 12)}
@@ -769,7 +809,7 @@ function RecordView({ record, index }: RecordViewProps) {
                     ...styles.scoreBadge,
                   }}
                 >
-                  {formatMetricValue(metric.value as number)}
+                  {formatEvaluatorValue(metric.value as number)}
                 </span>
               )}
             </span>
@@ -816,11 +856,11 @@ function RecordView({ record, index }: RecordViewProps) {
             </div>
           </div>
 
-          {metricEntries.length > 0 && (
-            <div style={styles.metricsDetail}>
-              <div style={styles.metricsDetailTitle}>Metrics</div>
-              <div style={styles.metricsDetailGrid}>
-                {metricEntries.map(([name, value]) => (
+          {evaluatorEntries.length > 0 && (
+            <div style={styles.evaluatorsDetail}>
+              <div style={styles.evaluatorsDetailTitle}>Evaluators</div>
+              <div style={styles.evaluatorsDetailGrid}>
+                {evaluatorEntries.map(([name, value]) => (
                   <div key={name}>
                     <div style={{ fontSize: "11px", color: "var(--color-text-secondary)" }}>
                       {formatMetricName(name)}
@@ -829,7 +869,7 @@ function RecordView({ record, index }: RecordViewProps) {
                       {typeof value === "object" && value !== null
                         ? Object.entries(value).map(([k, v]) => (
                             <div key={k}>
-                              {k}: {typeof v === "number" ? formatMetricValue(v) : typeof v === "object" && v !== null ? JSON.stringify(v, null, 2) : String(v)}
+                              {k}: {typeof v === "number" ? formatEvaluatorValue(v) : typeof v === "object" && v !== null ? JSON.stringify(v, null, 2) : String(v)}
                             </div>
                           ))
                         : String(value)}
@@ -930,10 +970,10 @@ function truncate(text: string, maxLen: number): string {
 
 /** Get the "Passed" display: e.g. "2/2" or "3/4" based on how many metrics passed threshold */
 function getPassedDisplay(record: ExperimentRecord): { text: string; allPassed: boolean } {
-  const metrics = getMetricSummary(record.metrics);
-  if (metrics.length === 0) return { text: "—", allPassed: true };
-  const total = metrics.length;
-  const passed = metrics.filter((m) => {
+  const evaluators = getEvaluatorSummary(record.evaluators);
+  if (evaluators.length === 0) return { text: "—", allPassed: true };
+  const total = evaluators.length;
+  const passed = evaluators.filter((m) => {
     if (m.type === "boolean") return m.value === true;
     if (typeof m.value === "number") {
       // 0-1 scale (f1, precision, recall): pass if >= 0.5
@@ -982,38 +1022,38 @@ function DrillDownPanel({ model, onClose }: DrillDownPanelProps) {
     return Array.from(keys);
   }, [model.records]);
 
-  const metricKeys = useMemo(() => {
+  const evaluatorKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const r of model.records) {
-      for (const k of Object.keys(r.metrics)) {
+      for (const k of Object.keys(r.evaluators)) {
         keys.add(k);
       }
     }
     return Array.from(keys);
   }, [model.records]);
 
-  function renderMetricBadge(metricValue: MetricValue) {
+  function renderEvaluatorBadge(evaluatorValue: EvaluatorValue) {
     const passStyle = { ...styles.scoreBadge, border: "1px solid var(--color-success, #a0d89f)", color: "var(--color-success, #a0d89f)", background: "transparent", fontSize: "11px" };
     const failStyle = { ...styles.scoreBadge, border: "1px solid var(--color-error, #e74856)", color: "var(--color-error, #e74856)", background: "transparent", fontSize: "11px" };
 
-    if (typeof metricValue.score === "number") {
-      const passed = metricValue.score >= 3;
-      return <span style={passed ? passStyle : failStyle}>{passed ? "Pass" : "Fail"}: {metricValue.score}</span>;
+    if (typeof evaluatorValue.score === "number") {
+      const passed = evaluatorValue.score >= 3;
+      return <span style={passed ? passStyle : failStyle}>{passed ? "Pass" : "Fail"}: {evaluatorValue.score}</span>;
     }
-    if (typeof metricValue.f1_score === "number") {
-      const passed = metricValue.f1_score >= 0.5;
-      return <span style={passed ? passStyle : failStyle}>{passed ? "Pass" : "Fail"}: {metricValue.f1_score.toFixed(3)}</span>;
+    if (typeof evaluatorValue.f1_score === "number") {
+      const passed = evaluatorValue.f1_score >= 0.5;
+      return <span style={passed ? passStyle : failStyle}>{passed ? "Pass" : "Fail"}: {evaluatorValue.f1_score.toFixed(3)}</span>;
     }
-    if (typeof metricValue.match === "boolean") {
-      return <span style={metricValue.match ? passStyle : failStyle}>{metricValue.match ? "Pass" : "Fail"}</span>;
+    if (typeof evaluatorValue.match === "boolean") {
+      return <span style={evaluatorValue.match ? passStyle : failStyle}>{evaluatorValue.match ? "Pass" : "Fail"}</span>;
     }
-    const numericVal = Object.values(metricValue).find((v) => typeof v === "number") as number | undefined;
+    const numericVal = Object.values(evaluatorValue).find((v) => typeof v === "number") as number | undefined;
     if (typeof numericVal === "number") {
       const passed = numericVal >= 0 && numericVal <= 1 ? numericVal >= 0.5 : numericVal >= 3;
       return <span style={passed ? passStyle : failStyle}>{passed ? "Pass" : "Fail"}: {numericVal <= 1 ? numericVal.toFixed(3) : numericVal}</span>;
     }
-    const keys = Object.keys(metricValue).filter((k) => k !== "explanation");
-    const summary = keys.slice(0, 2).map((k) => `${k}: ${String(metricValue[k]).slice(0, 20)}`).join(", ");
+    const keys = Object.keys(evaluatorValue).filter((k) => k !== "explanation");
+    const summary = keys.slice(0, 2).map((k) => `${k}: ${String(evaluatorValue[k]).slice(0, 20)}`).join(", ");
     return <span style={{ fontSize: "11px", fontFamily: "var(--font-mono)", color: "var(--color-text-secondary)" }}>{summary || "—"}</span>;
   }
 
@@ -1093,7 +1133,7 @@ function DrillDownPanel({ model, onClose }: DrillDownPanelProps) {
 
       {/* Heading */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 16px" }}>
-        <h2 style={{ fontSize: "16px", fontWeight: 600, margin: 0 }}>Detailed metrics result</h2>
+        <h2 style={{ fontSize: "16px", fontWeight: 600, margin: 0 }}>Detailed evaluator results</h2>
         <button
           onClick={() => setShowRaw(!showRaw)}
           style={{
@@ -1124,7 +1164,7 @@ function DrillDownPanel({ model, onClose }: DrillDownPanelProps) {
             <ColorizedJson data={paginatedRecords.map((r) => ({
               record: r.record,
               output: r.output,
-              metrics: r.metrics,
+              evaluators: r.evaluators,
               model: r.model_name,
             }))} />
           </pre>
@@ -1140,7 +1180,7 @@ function DrillDownPanel({ model, onClose }: DrillDownPanelProps) {
                 <th key={k} style={{ ...styles.th, textTransform: "none" as const, minWidth: "120px" }}>{k}</th>
               ))}
               <th style={{ ...styles.th, textTransform: "none" as const, minWidth: "150px" }}>Output</th>
-              {metricKeys.map((k) => (
+              {evaluatorKeys.map((k) => (
                 <th key={k} style={{ ...styles.th, textTransform: "none" as const, minWidth: "90px" }}>
                   {formatMetricName(k)}
                 </th>
@@ -1196,9 +1236,9 @@ function DrillDownPanel({ model, onClose }: DrillDownPanelProps) {
                   <td style={rowCellStyle} title={isExpanded ? undefined : String(outputText)}>
                     {isExpanded ? String(outputText) : truncate(String(outputText), 60)}
                   </td>
-                  {metricKeys.map((k) => (
+                  {evaluatorKeys.map((k) => (
                     <td key={k} style={{ ...rowDataCellStyle, textAlign: "center" }}>
-                      {record.metrics[k] ? renderMetricBadge(record.metrics[k]) : "—"}
+                      {record.evaluators[k] ? renderEvaluatorBadge(record.evaluators[k]) : "—"}
                     </td>
                   ))}
                 </tr>
@@ -1248,10 +1288,10 @@ function DrillDownPanel({ model, onClose }: DrillDownPanelProps) {
 interface DeltaValueProps {
   value: number;
   baselineValue: number;
-  metricKey: string;
+  evaluatorKey: string;
 }
 
-function DeltaValue({ value, baselineValue, metricKey }: DeltaValueProps) {
+function DeltaValue({ value, baselineValue, evaluatorKey }: DeltaValueProps) {
   const delta = value - baselineValue;
 
   if (Math.abs(delta) < 0.0005) {
@@ -1263,9 +1303,9 @@ function DeltaValue({ value, baselineValue, metricKey }: DeltaValueProps) {
   }
 
   const isUp = delta > 0;
-  const isBetter = isHigherBetter(metricKey) ? isUp : !isUp;
+  const isBetter = isHigherBetter(evaluatorKey) ? isUp : !isUp;
   const arrow = isUp ? "▲" : "▼";
-  const formatted = (isUp ? "+" : "") + formatMetricValue(delta);
+  const formatted = (isUp ? "+" : "") + formatEvaluatorValue(delta);
 
   return (
     <span style={isBetter ? styles.deltaPositive : styles.deltaNegative}>
@@ -1277,13 +1317,13 @@ function DeltaValue({ value, baselineValue, metricKey }: DeltaValueProps) {
 // ---- Best-in-row highlighting ----
 
 /** Find the index of the best value for a metric across all models */
-function findBestModelIndex(models: ModelData[], metricKey: string): number | null {
-  const higherBetter = isHigherBetter(metricKey);
+function findBestModelIndex(models: ModelData[], evaluatorKey: string): number | null {
+  const higherBetter = isHigherBetter(evaluatorKey);
   let bestIdx: number | null = null;
   let bestVal: number | null = null;
 
   for (let i = 0; i < models.length; i++) {
-    const val = models[i].summary.aggregated_metrics[metricKey];
+    const val = models[i].summary.aggregated_evaluators[evaluatorKey];
     if (val === undefined) continue;
     if (bestVal === null || (higherBetter ? val > bestVal : val < bestVal)) {
       bestVal = val;
@@ -1312,7 +1352,7 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
 
   const [baselineIndex, setBaselineIndex] = useState<number | null>(null);
   const [drillDownModel, setDrillDownModel] = useState<ModelData | null>(null);
-  const [hiddenMetrics, setHiddenMetrics] = useState<Set<string>>(new Set());
+  const [hiddenEvaluators, setHiddenEvaluators] = useState<Set<string>>(new Set());
   const [expandedTags, setExpandedTags] = useState<Set<string>>(new Set());
 
   // Group models by model_name tag
@@ -1328,11 +1368,11 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
   const scoreKeys = allMetricKeys.filter((k) => !overviewKeys.includes(k) && !failKeys.includes(k));
 
   // Visible metric keys
-  const visibleScoreKeys = scoreKeys.filter((k) => !hiddenMetrics.has(k));
-  const visibleFailKeys = failKeys.filter((k) => !hiddenMetrics.has(k));
+  const visibleScoreKeys = scoreKeys.filter((k) => !hiddenEvaluators.has(k));
+  const visibleFailKeys = failKeys.filter((k) => !hiddenEvaluators.has(k));
 
   const toggleMetricVisibility = (key: string) => {
-    setHiddenMetrics((prev) => {
+    setHiddenEvaluators((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
         next.delete(key);
@@ -1358,7 +1398,7 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
     setBaselineIndex(idx >= 0 ? idx : 0);
   }, [flatModels, baselineIndex]);
 
-  const baselineMetrics = baselineIndex !== null ? flatModels[baselineIndex]?.summary.aggregated_metrics : null;
+  const baselineEvaluators = baselineIndex !== null ? flatModels[baselineIndex]?.summary.aggregated_evaluators : null;
 
   // Build column headers with group spans
   const totalCols = flatModels.length + 1; // +1 for metric label column
@@ -1450,7 +1490,7 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
         {allMetricKeys.length > 8 && (
           <div style={{ marginTop: "12px" }}>
             <span style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginRight: "8px" }}>
-              Toggle metrics:
+              Toggle evaluators:
             </span>
             {[...scoreKeys, ...failKeys].map((key) => (
               <button
@@ -1459,8 +1499,8 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
                   ...styles.buttonSmall,
                   marginRight: "4px",
                   marginBottom: "4px",
-                  opacity: hiddenMetrics.has(key) ? 0.4 : 1,
-                  textDecoration: hiddenMetrics.has(key) ? "line-through" : "none",
+                  opacity: hiddenEvaluators.has(key) ? 0.4 : 1,
+                  textDecoration: hiddenEvaluators.has(key) ? "line-through" : "none",
                 }}
                 onClick={() => toggleMetricVisibility(key)}
               >
@@ -1634,13 +1674,13 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
                 Overview
               </td>
             </tr>
-            {overviewKeys.map((metricKey) => {
-              const bestIdx = findBestModelIndex(flatModels, metricKey);
+            {overviewKeys.map((evaluatorKey) => {
+              const bestIdx = findBestModelIndex(flatModels, evaluatorKey);
               return (
-                <tr key={metricKey}>
-                  <td style={styles.thMetricLabel} title={formatMetricName(metricKey)}>{formatMetricName(metricKey)}</td>
+                <tr key={evaluatorKey}>
+                  <td style={styles.thMetricLabel} title={formatMetricName(evaluatorKey)}>{formatMetricName(evaluatorKey)}</td>
                   {flatModels.map((model, idx) => {
-                    const val = model.summary.aggregated_metrics[metricKey];
+                    const val = model.summary.aggregated_evaluators[evaluatorKey];
                     const isFirstInGroup =
                       groups.length > 1 && groups.some((g) => g.models[0] === model);
                     const isBest = bestIdx === idx && flatModels.length > 1;
@@ -1657,12 +1697,12 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
                       >
                         {val !== undefined ? (
                           <>
-                            {formatOverviewValue(val, metricKey)}
-                            {baselineMetrics && !isBaseline && baselineMetrics[metricKey] !== undefined && (
+                            {formatOverviewValue(val, evaluatorKey)}
+                            {baselineEvaluators && !isBaseline && baselineEvaluators[evaluatorKey] !== undefined && (
                               <DeltaValue
                                 value={val}
-                                baselineValue={baselineMetrics[metricKey]}
-                                metricKey={metricKey}
+                                baselineValue={baselineEvaluators[evaluatorKey]}
+                                evaluatorKey={evaluatorKey}
                               />
                             )}
                           </>
@@ -1681,21 +1721,21 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
               <>
                 <tr>
                   <td colSpan={totalCols} style={{ ...styles.sectionRow, padding: "8px 16px" }}>
-                    Metrics
+                    Evaluators
                   </td>
                 </tr>
-                {visibleScoreKeys.map((metricKey) => {
-                  const bestIdx = findBestModelIndex(flatModels, metricKey);
+                {visibleScoreKeys.map((evaluatorKey) => {
+                  const bestIdx = findBestModelIndex(flatModels, evaluatorKey);
                   return (
-                    <tr key={metricKey}>
-                      <td style={styles.thMetricLabel} title={formatMetricName(metricKey)}>{formatMetricName(metricKey)}</td>
+                    <tr key={evaluatorKey}>
+                      <td style={styles.thMetricLabel} title={formatMetricName(evaluatorKey)}>{formatMetricName(evaluatorKey)}</td>
                       {flatModels.map((model, idx) => {
-                        const val = model.summary.aggregated_metrics[metricKey];
+                        const val = model.summary.aggregated_evaluators[evaluatorKey];
                         const isFirstInGroup =
                           groups.length > 1 && groups.some((g) => g.models[0] === model);
                         const isBest = bestIdx === idx && flatModels.length > 1;
                         const isBaseline = baselineIndex === idx;
-                        const baselineVal = baselineMetrics?.[metricKey];
+                        const baselineVal = baselineEvaluators?.[evaluatorKey];
                         const hasComparison = !isBaseline && val !== undefined && baselineVal !== undefined;
                         return (
                           <td
@@ -1706,18 +1746,18 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
                               ...(isBest ? { fontWeight: 700 } : {}),
                               ...getBaselineBorderStyle(isBaseline, "middle"),
                               color: hasComparison
-                                ? getBaselineColor(val, baselineVal, metricKey)
+                                ? getBaselineColor(val, baselineVal, evaluatorKey)
                                 : val !== undefined ? "var(--color-success)" : undefined,
                             }}
                           >
                             {val !== undefined ? (
                               <>
-                                {formatMetricValue(val)}
-                                {baselineMetrics && !isBaseline && baselineMetrics[metricKey] !== undefined && (
+                                {formatEvaluatorValue(val)}
+                                {baselineEvaluators && !isBaseline && baselineEvaluators[evaluatorKey] !== undefined && (
                                   <DeltaValue
                                     value={val}
-                                    baselineValue={baselineMetrics[metricKey]}
-                                    metricKey={metricKey}
+                                    baselineValue={baselineEvaluators[evaluatorKey]}
+                                    evaluatorKey={evaluatorKey}
                                   />
                                 )}
                               </>
@@ -1741,11 +1781,11 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
                     Failures
                   </td>
                 </tr>
-                {visibleFailKeys.map((metricKey) => (
-                  <tr key={metricKey}>
-                    <td style={styles.thMetricLabel} title={formatMetricName(metricKey)}>{formatMetricName(metricKey)}</td>
+                {visibleFailKeys.map((evaluatorKey) => (
+                  <tr key={evaluatorKey}>
+                    <td style={styles.thMetricLabel} title={formatMetricName(evaluatorKey)}>{formatMetricName(evaluatorKey)}</td>
                     {flatModels.map((model, idx) => {
-                      const val = model.summary.aggregated_metrics[metricKey];
+                      const val = model.summary.aggregated_evaluators[evaluatorKey];
                       const isFirstInGroup =
                         groups.length > 1 && groups.some((g) => g.models[0] === model);
                       const isBaseline = baselineIndex === idx;
@@ -1759,7 +1799,7 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
                             color: val && val > 0 ? "var(--color-error)" : undefined,
                           }}
                         >
-                          {val !== undefined ? formatMetricValue(val) : "\u2014"}
+                          {val !== undefined ? formatEvaluatorValue(val) : "\u2014"}
                         </td>
                       );
                     })}
@@ -1781,7 +1821,7 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
           padding: "12px",
         }}
       >
-        {"Click \u25B6 to view detailed metrics for each record"}
+        {"Click \u25B6 to view detailed evaluator results for each record"}
         {baselineIndex === null && " \u2022 Click \u2606 to set a baseline for comparison"}
       </div>
 
@@ -1810,7 +1850,7 @@ interface ExperimentListItem {
   path: string;
   num_runs?: number;
   created?: number;
-  metrics?: string[];
+  evaluators?: string[];
   status?: string;
 }
 
@@ -1837,7 +1877,7 @@ function ExperimentsOverview({
       <div style={{ marginBottom: "24px" }}>
         <h1 style={{ fontSize: "20px", fontWeight: 600, margin: "0 0 4px" }}>Evaluations</h1>
         <p style={{ fontSize: "14px", color: "var(--color-text-muted, var(--color-text-secondary))", margin: 0 }}>
-          Evaluate the quality of your generative AI applications with industry standard metrics to compare and choose the best version based on your need.
+          Evaluate the quality of your generative AI applications with industry standard evaluators to compare and choose the best version based on your need.
         </p>
       </div>
 
@@ -1872,7 +1912,7 @@ function ExperimentsOverview({
               <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600 }}>Runs</th>
               <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600 }}>Status</th>
               <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600 }}>Created</th>
-              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600 }}>Metrics</th>
+              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600 }}>Evaluators</th>
             </tr>
           </thead>
           <tbody>
@@ -1905,7 +1945,7 @@ function ExperimentsOverview({
                 </td>
                 <td style={{ ...styles.td, textAlign: "left", fontFamily: "var(--font-sans)", padding: "8px 12px" }}>
                   <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
-                    {(exp.metrics ?? []).slice(0, 4).map((m) => (
+                    {(exp.evaluators ?? []).slice(0, 4).map((m) => (
                       <span
                         key={m}
                         style={{
@@ -1917,9 +1957,9 @@ function ExperimentsOverview({
                         {formatMetricName(m)}
                       </span>
                     ))}
-                    {(exp.metrics ?? []).length > 4 && (
+                    {(exp.evaluators ?? []).length > 4 && (
                       <span style={{ fontSize: "11px", color: "var(--color-text-muted, var(--color-text-secondary))" }}>
-                        +{(exp.metrics ?? []).length - 4}
+                        +{(exp.evaluators ?? []).length - 4}
                       </span>
                     )}
                   </div>
@@ -1957,7 +1997,7 @@ function ExperimentDetail({
   const allMetricKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const model of models) {
-      for (const key of Object.keys(model.summary.aggregated_metrics)) {
+      for (const key of Object.keys(model.summary.aggregated_evaluators)) {
         if (key !== "number_of_records" && key !== "average_response_time_ms" && !key.toLowerCase().includes("fail"))
           keys.add(key);
       }
@@ -1974,26 +2014,16 @@ function ExperimentDetail({
     }));
   }, [allMetricKeys]);
 
-  /** Format a metric as "percentage\n pass/total" like Foundry's "100% 10/10" */
-  function formatMetricAsPassRate(model: ModelData, metricKey: string): { pct: string; detail: string; allPassed: boolean } | null {
-    const val = model.summary.aggregated_metrics[metricKey];
+  /** Format a metric as "percentage\n pass/total" like Foundry's "100% 10/10".
+   *  Computes real per-record pass rates (positive score = pass) instead of
+   *  deriving from the mean — matching Foundry portal behavior exactly. */
+  function formatEvaluatorAsPassRate(model: ModelData, evaluatorKey: string): { pct: string; detail: string; allPassed: boolean } | null {
+    const val = model.summary.aggregated_evaluators[evaluatorKey];
     if (val === undefined) return null;
-    const numRecords = model.summary.aggregated_metrics.number_of_records || model.records.length || 1;
 
-    // If value looks like a 1-5 scale score, convert to percentage
-    if (val <= 5 && val > 0) {
-      const pct = Math.round((val / 5) * 100);
-      const passed = Math.round((val / 5) * numRecords);
-      return { pct: `${pct}%`, detail: `${passed} / ${numRecords}`, allPassed: pct === 100 };
-    }
-    // If value is 0-1, treat as ratio
-    if (val >= 0 && val <= 1) {
-      const pct = Math.round(val * 100);
-      const passed = Math.round(val * numRecords);
-      return { pct: `${pct}%`, detail: `${passed} / ${numRecords}`, allPassed: pct === 100 };
-    }
-    // Otherwise just show the value
-    return { pct: formatMetricValue(val), detail: "", allPassed: true };
+    const { passed, total } = computePassRate(model, evaluatorKey);
+    const pct = total > 0 ? Math.round((passed / total) * 100) : 0;
+    return { pct: `${pct}%`, detail: `${passed} / ${total}`, allPassed: pct === 100 };
   }
 
   // If a run is selected, show its detailed metrics as full page
@@ -2101,7 +2131,7 @@ function ExperimentDetail({
           }}>
             <ColorizedJson data={models.map((m) => ({
               name: m.model_display_name || m.model_name,
-              aggregated_metrics: m.summary.aggregated_metrics,
+              aggregated_evaluators: m.summary.aggregated_evaluators,
               tags: m.summary.tags,
               records_count: m.records.length,
             }))} />
@@ -2143,10 +2173,10 @@ function ExperimentDetail({
                   </span>
                 </td>
                 <td style={{ ...styles.td, textAlign: "center", padding: "8px 12px" }}>
-                  {model.summary.aggregated_metrics.number_of_records || model.records.length}
+                  {model.summary.aggregated_evaluators.number_of_records || model.records.length}
                 </td>
                 {allMetricKeys.map((k) => {
-                  const display = formatMetricAsPassRate(model, k);
+                  const display = formatEvaluatorAsPassRate(model, k);
                   return (
                     <td key={k} style={{ ...styles.td, textAlign: "right", padding: "4px 6px" }}>
                       {display ? (

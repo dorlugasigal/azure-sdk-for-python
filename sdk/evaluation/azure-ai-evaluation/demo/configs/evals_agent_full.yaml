@@ -1,0 +1,51 @@
+experiment:
+  name: "agent-full-evaluation"
+
+  tracking_backend:
+    type: "foundry"
+    azure_ai_project: "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"
+
+  targets:
+    - name: "weather_agent_local"        # MAF @target with tool execution
+      type: "custom"
+
+  dataset:
+    name: "agent_queries"
+    type: "jsonl"
+    args:
+      data_path: "demo/data/agent_eval_data.jsonl"
+
+  evaluators:
+    # Quality (LLM-as-judge)
+    - name: "coherence"
+      mapping:
+        query: "dataset.query"
+        response: "model.answer"
+
+    # Custom agent metric (rule-based, no model needed)
+    - name: "response_completeness"
+      mapping:
+        response: "model.answer"
+        query: "dataset.query"
+
+    # Agent evaluators (LLM-as-judge — needs Azure OpenAI connection)
+    - name: "task_adherence"
+      mapping:
+        query: "dataset.query"
+        response: "model.output_items"
+
+    - name: "intent_resolution"
+      mapping:
+        query: "dataset.query"
+        response: "model.output_items"
+
+    - name: "tool_call_accuracy"
+      mapping:
+        query: "dataset.query"
+        response: "model.output_items"
+        tool_definitions: "model.tool_definitions"
+
+  connections:
+    default:
+      azure_endpoint: "https://foundry-evee-ko9z2s7c.cognitiveservices.azure.com/"
+      azure_deployment: "gpt-4.1-mini"

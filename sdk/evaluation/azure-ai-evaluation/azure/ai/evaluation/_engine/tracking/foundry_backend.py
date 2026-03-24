@@ -76,13 +76,10 @@ class FoundryTrackingBackend(TrackingBackend):
         self._eval_object_id: Optional[str] = None  # one eval for the whole experiment
         self._eval_created = False
 
-        # Per-run state (reset in start_run)
-        self._current_run_id = ""
-        self._current_model_name = ""
-        self._collected_records: List[Dict[str, Any]] = []
-        self._input_records: Dict[str, Dict[str, Any]] = {}  # record_id -> original input + scores
-        self._aggregated_metrics: Dict[str, Any] = {}
+        # Per-run state — keyed by run_id for thread safety
+        self._runs: Dict[str, Dict[str, Any]] = {}  # run_id -> {model_name, records, input_records, aggregated}
         self._run_count = 0
+        self._lock = __import__("threading").Lock()
 
         # Published results (accessible after evaluation)
         self.published_urls: List[str] = []
@@ -114,39 +111,60 @@ class FoundryTrackingBackend(TrackingBackend):
         self._experiment_config = event.config
 
     def start_run(self, event: ModelRunStartEvent) -> Optional[str]:
-        """Start a new model run — reset per-run collection state."""
-        self._current_run_id = event.run_id
-        self._current_model_name = event.model_name
-        self._collected_records = []
-        self._input_records = {}
-        self._aggregated_metrics = {}
+        """Start a new model run — initialize per-run collection state."""
+        with self._lock:
+            self._runs[event.run_id] = {
+                "model_name": event.model_name,
+                "records": [],
+                "input_records": {},
+                "aggregated": {},
+            }
         return event.run_id
 
     def on_inference_started(self, event: InferenceStartEvent) -> None:
         """Collect original input data for later submission."""
-        self._input_records[event.record_id] = event.input_data
+        run = self._runs.get(event.run_id)
+        if run:
+            run["input_records"][event.record_id] = event.input_data
 
     def on_inference_completed(self, event: InferenceCompletedEvent) -> None:
-        """Collect per-record output data and merge metric scores into input records."""
-        self._collected_records.append({
+        """Collect per-record output data and merge responses + scores into input records."""
+        run = self._runs.get(event.run_id)
+        if not run:
+            return
+        run["records"].append({
             "record_id": event.record_id,
             "status": str(event.status),
             "duration_ms": event.duration_ms,
             "output": event.output_data,
         })
 
-        # Merge per-record metric scores into the input record so they can be
-        # uploaded as part of the JSONL items and read back by pass-through graders.
-        metrics = event.output_data.get("metrics", {})
-        if metrics and event.record_id in self._input_records:
+        if event.record_id not in run["input_records"]:
+            return
+
+        input_rec = run["input_records"][event.record_id]
+
+        # Merge agent response into input record for Foundry portal display
+        output = event.output_data.get("output", {})
+        if isinstance(output, dict):
+            if "answer" in output:
+                input_rec["response"] = str(output["answer"])
+            if "output_text" in output:
+                input_rec["response"] = str(output["output_text"])
+
+        # Merge per-record evaluator scores
+        metrics = event.output_data.get("evaluators", event.output_data.get("metrics", {}))
+        if metrics:
             for metric_name, metric_value in metrics.items():
                 score = self._extract_score(metric_name, metric_value)
                 if score is not None:
-                    self._input_records[event.record_id][f"__score_{metric_name}"] = str(score)
+                    input_rec[f"__score_{metric_name}"] = str(score)
 
     def on_results_analyzed(self, event: ResultsAnalyzedEvent) -> None:
-        """Store aggregated metrics."""
-        self._aggregated_metrics = event.metrics or {}
+        """Store aggregated metrics for the run."""
+        run = self._runs.get(event.run_id)
+        if run:
+            run["aggregated"] = event.metrics or {}
 
     def on_artifact_generated(self, event: ArtifactGeneratedEvent) -> None:
         """Could upload artifacts, but for now just log."""
@@ -160,23 +178,21 @@ class FoundryTrackingBackend(TrackingBackend):
             logger.warning(f"FoundryTrackingBackend: run {event.run_id} failed, skipping publish")
             return
 
-        try:
-            try:
-                from rich.console import Console
-                _con = Console()
-                def _print(msg: str) -> None:
-                    _con.print(f"  [cyan]⠿[/cyan] {msg}", highlight=False)
-                def _success(msg: str) -> None:
-                    _con.print(f"  [bold green]✓[/bold green] {msg}")
-            except ImportError:
-                def _print(msg: str) -> None:
-                    print(f"  {msg}")
-                def _success(msg: str) -> None:
-                    print(f"  ✓ {msg}")
+        run = self._runs.get(event.run_id)
+        if not run:
+            logger.warning(f"FoundryTrackingBackend: no data for run {event.run_id}")
+            return
 
-            self._publish_run_to_foundry(on_status=_print)
+        model_name = run["model_name"]
+        try:
+            def _print(msg: str) -> None:
+                logger.info(msg)
+            def _success(msg: str) -> None:
+                logger.info(msg)
+
+            self._publish_run_to_foundry(run, on_status=_print)
             self._run_count += 1
-            _success(f"Published '{_format_variant_name(self._current_model_name)}' to Foundry")
+            _success(f"Published '{_format_variant_name(run['model_name'])}' to Foundry")
         except Exception as e:
             logger.warning(f"FoundryTrackingBackend: failed to publish run: {e}")
 
@@ -248,13 +264,10 @@ class FoundryTrackingBackend(TrackingBackend):
             },
         )
 
-        # Build pass-through PythonGrader testing criteria from config metrics.
+        # Build pass-through PythonGrader testing criteria from config evaluators.
         # Each grader reads its pre-computed score from the item data.
-        metrics_config = (
-            self._experiment_config
-            .get("experiment", {})
-            .get("metrics", [])
-        )
+        exp_config = self._experiment_config.get("experiment", {})
+        metrics_config = exp_config.get("evaluators", exp_config.get("metrics", []))
 
         testing_criteria: List[Dict[str, Any]] = []
         for mc in metrics_config:
@@ -307,17 +320,18 @@ class FoundryTrackingBackend(TrackingBackend):
 
         return eval_object.id
 
-    def _publish_run_to_foundry(self, on_status=None) -> None:
+    def _publish_run_to_foundry(self, run_data, on_status=None) -> None:
         """Add a run to the experiment's eval with the collected records."""
-        if not self._openai_client or not self._input_records:
+        if not self._openai_client or not run_data["input_records"]:
             return
 
         def _status(msg: str) -> None:
             if on_status:
                 on_status(msg)
 
-        original_records = list(self._input_records.values())
-        _status(f"Publishing '{self._current_model_name}' ({len(original_records)} records)...")
+        original_records = list(run_data["input_records"].values())
+        model_name = run_data["model_name"]
+        _status(f"Publishing '{model_name}' ({len(original_records)} records)...")
 
         # Ensure eval exists (created once, reused for all runs)
         with self._eval_lock:
@@ -334,9 +348,9 @@ class FoundryTrackingBackend(TrackingBackend):
             clean = {k: str(v) if not isinstance(v, str) else v for k, v in record.items()}
             items.append(SourceFileContentContent(item=clean))
 
-        run_display = _format_variant_name(self._current_model_name)
+        run_display = _format_variant_name(model_name)
 
-        _status(f"Submitting run '{run_display}'...")
+        _status(f"Publishing '{run_display}'...")
         eval_run = self._openai_client.evals.runs.create(
             eval_id=eval_id,
             name=run_display,
@@ -349,7 +363,6 @@ class FoundryTrackingBackend(TrackingBackend):
             ),
         )
 
-        _status("Waiting for Foundry to process...")
         run = eval_run
         for _ in range(60):
             run = self._openai_client.evals.runs.retrieve(
@@ -358,5 +371,4 @@ class FoundryTrackingBackend(TrackingBackend):
             )
             if run.status in ("completed", "failed", "cancelled"):
                 break
-            _status(f"Foundry processing '{self._current_model_name}'... ({run.status})")
             time.sleep(3)

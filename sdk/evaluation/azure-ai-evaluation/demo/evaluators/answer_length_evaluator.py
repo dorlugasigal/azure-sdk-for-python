@@ -1,13 +1,13 @@
-"""Custom evaluator example — auto-discovered by the engine via @metric decorator.
+"""Custom evaluator example — auto-discovered by the engine via @evaluator decorator.
 
 Demonstrates how to create your own evaluation metric that runs alongside
 built-in evaluators like f1_score and relevance.
 """
-from azure.ai.evaluation._engine.decorators import metric, BaseMetric
+from azure.ai.evaluation._engine.decorators import evaluator, BaseEvaluator
 
 
-@metric(name="answer_length")
-class AnswerLengthMetric(BaseMetric):
+@evaluator(name="answer_length")
+class AnswerLengthMetric(BaseEvaluator):
     """Scores answers by length — prefers concise responses (50-200 chars)."""
 
     def compute(self, response: str = "", **kwargs):

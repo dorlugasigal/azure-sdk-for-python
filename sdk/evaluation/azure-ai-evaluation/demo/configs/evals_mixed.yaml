@@ -1,31 +1,25 @@
 experiment:
-  name: "remote-model-eval"
+  name: "mixed-eval-demo"
 
-  compute:
+  tracking_backend:
     type: "foundry"
     azure_ai_project: "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"
-
-  targets:
-    - name: "foundry_model"
-      type: "azure_ai_model"
-      deployment_name: "gpt-4.1-mini"
-      connection_name: "default"
 
   dataset:
     name: "qa_data"
     type: "jsonl"
     args:
-      data_path: "demo/data.jsonl"
+      data_path: "demo/data/data.jsonl"
 
-  metrics:
+  evaluators:
+    - name: "f1_score"
+      mapping:
+        response: "dataset.answer"
+        ground_truth: "dataset.context"
     - name: "relevance"
       mapping:
         query: "dataset.question"
-        response: "model.answer"
-    - name: "coherence"
-      mapping:
-        query: "dataset.question"
-        response: "model.answer"
+        response: "dataset.answer"
 
   connections:
     default:

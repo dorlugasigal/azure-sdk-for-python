@@ -85,20 +85,21 @@ class ExperimentRunner:
 
         if remote_compute:
             # User explicitly requested remote
-            if compute_config and compute_config.azure_ai_project:
-                return FoundryComputeBackend(
-                    project_endpoint=compute_config.azure_ai_project,
-                )
+            endpoint = None
+            if compute_config:
+                endpoint = compute_config.azure_ai_project
+            if not endpoint:
+                for conn in (config.experiment.connections or []):
+                    endpoint = getattr(conn, "azure_ai_project", None)
+                    if endpoint:
+                        break
 
-            # Try to find endpoint from connections
-            for conn in (config.experiment.connections or []):
-                endpoint = getattr(conn, "azure_ai_project", None)
-                if endpoint:
-                    return FoundryComputeBackend(project_endpoint=endpoint)
+            if endpoint:
+                return FoundryComputeBackend(project_endpoint=endpoint)
 
             raise ValueError(
                 "Remote compute requested (--remote) but no project endpoint configured. "
-                "Set 'compute.azure_ai_project' in your config or add a connection with an endpoint."
+                "Set 'compute.azure_ai_project' in your config."
             )
 
         # Default: always local unless --remote was explicitly requested

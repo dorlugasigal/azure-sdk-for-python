@@ -69,8 +69,8 @@ class DatasetConfig(BaseModel):
     args: Dict[str, Any] = Field(default_factory=dict)
 
 
-class MetricConfig(BaseModel):
-    """Metric configuration."""
+class EvaluatorConfig(BaseModel):
+    """Evaluator configuration."""
 
     model_config = ConfigDict(extra="allow")
 
@@ -95,9 +95,11 @@ class TargetVariantConfig(BaseModel):
     connection_name: str = "default"  # local execution only: which connection provides the endpoint
     prompts: List[str] = Field(default_factory=list)  # prompt file paths (each produces a separate run)
 
-    # For azure_ai_agent targets (out of scope but defined)
+    # For azure_ai_agent targets
     agent_name: Optional[str] = None
     agent_version: Optional[str] = None
+    azure_ai_project: Optional[str] = None  # Foundry project endpoint URL (needed for local agent eval)
+    instructions: Optional[str] = None  # Developer/system instructions for agent targets
 
     @model_validator(mode="before")
     @classmethod
@@ -146,7 +148,7 @@ class ExperimentConfig(BaseModel):
     max_workers: Optional[int] = None
     targets: List[TargetVariantConfig] = Field(default_factory=list)
     dataset: Optional[DatasetConfig] = None
-    metrics: List[MetricConfig] = Field(default_factory=list)
+    evaluators: List[EvaluatorConfig] = Field(default_factory=list)
     compute: Optional[ComputeConfig] = None
     tracking_backend: Optional[TrackingBackendConfig] = None
     connections: Any = Field(default_factory=list)
@@ -165,6 +167,9 @@ class ExperimentConfig(BaseModel):
         # Backward compat: accept "models" as alias for "targets"
         if isinstance(values, dict) and "models" in values and "targets" not in values:
             values["targets"] = values.pop("models")
+        # Backward compat: accept "metrics" as alias for "evaluators"
+        if isinstance(values, dict) and "metrics" in values and "evaluators" not in values:
+            values["evaluators"] = values.pop("metrics")
         return values
 
 
@@ -193,3 +198,7 @@ class Config(BaseModel):
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return self.model_dump()
+
+
+# Backward compat alias
+MetricConfig = EvaluatorConfig

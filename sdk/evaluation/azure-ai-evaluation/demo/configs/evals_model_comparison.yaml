@@ -1,34 +1,36 @@
 experiment:
-  name: "prompt-strategy-comparison-tracked"
+  name: "model-comparison"
 
   tracking_backend:
     type: "foundry"
     azure_ai_project: "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"
 
   targets:
-    - name: "prompt_compare"
-      type: "custom"
+    - name: "model_compare"
+      type: "azure_ai_model"
+      deployment_name: ["gpt-4.1-mini", "gpt-4.1"]
+      connection_name: "default"
       args:
-        - prompt: ["baseline", "single_shot", "few_shot"]
-        - temperature: [0.7]
-        - max_tokens: [200]
+        - temperature: [0.3, 0.9]
 
   dataset:
     name: "qa_data"
     type: "jsonl"
     args:
-      data_path: "demo/data.jsonl"
+      data_path: "demo/data/data.jsonl"
 
-  metrics:
+  evaluators:
     - name: "relevance"
       mapping:
         query: "dataset.question"
         response: "model.answer"
-        context: "dataset.context"
-    - name: "f1_score"
+    - name: "coherence"
+      mapping:
+        query: "dataset.question"
+        response: "model.answer"
+    - name: "conciseness"
       mapping:
         response: "model.answer"
-        ground_truth: "dataset.context"
 
   connections:
     default:

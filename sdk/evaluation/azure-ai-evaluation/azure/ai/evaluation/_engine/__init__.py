@@ -1,7 +1,7 @@
 """Vendored evee core engine for POC."""
 from __future__ import annotations
 
-from .config import Config, ConnectionConfig, DatasetConfig, MetricConfig, TargetVariantConfig, ModelVariantConfig
+from .config import Config, ConnectionConfig, DatasetConfig, EvaluatorConfig, MetricConfig, TargetVariantConfig, ModelVariantConfig
 from .decorators import (
     DATASET_REGISTRY,
     METRIC_REGISTRY,
@@ -31,6 +31,7 @@ __all__ = [
     "ConnectionConfig",
     "DatasetConfig",
     "MetricConfig",
+    "EvaluatorConfig",
     "TargetVariantConfig",
     "ModelVariantConfig",
     "BaseDataset",

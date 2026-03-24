@@ -5,9 +5,9 @@ experiment:
     name: "qa_data"
     type: "jsonl"
     args:
-      data_path: "demo/data.jsonl"
+      data_path: "demo/data/data.jsonl"
 
-  metrics:
+  evaluators:
     - name: "f1_score"
       mapping:
         response: "dataset.answer"

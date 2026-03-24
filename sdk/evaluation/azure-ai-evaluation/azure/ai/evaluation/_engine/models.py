@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -27,14 +27,50 @@ class InferenceOutput:
     model_name: str
     record: Dict[str, Any]
     args: Dict[str, Any]
+    agent_trace: Any = None  # Optional AgentTrace from OTel trace capture
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        return {
+        """Convert to dictionary (JSON-serializable)."""
+        result = {
             "output": self.output,
             "model_name": self.model_name,
             "record": self.record,
             "args": self.args,
+        }
+        if self.agent_trace is not None:
+            result["trace"] = {
+                "trace_id": self.agent_trace.trace_id,
+                "llm_call_count": len(self.agent_trace.llm_calls),
+                "total_input_tokens": self.agent_trace.total_input_tokens,
+                "total_output_tokens": self.agent_trace.total_output_tokens,
+                "total_duration_ms": self.agent_trace.total_duration_ms,
+                "tool_call_count": len(self.agent_trace.tool_calls),
+            }
+        return result
+
+
+@dataclass
+class EvaluatorResult:
+    """Single evaluator result in Foundry-compatible format."""
+
+    name: str
+    score: Optional[float] = None
+    label: Optional[str] = None  # "pass" or "fail"
+    reason: Optional[str] = None
+    threshold: Optional[float] = None
+    passed: Optional[bool] = None
+    details: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "name": self.name,
+            "score": self.score,
+            "label": self.label,
+            "reason": self.reason,
+            "threshold": self.threshold,
+            "passed": self.passed,
+            "details": self.details,
         }
 
 
@@ -44,18 +80,26 @@ class EvaluationOutput:
 
     run_id: str
     inference_output: InferenceOutput
-    metrics: Dict[str, Dict[str, Any]]
-    system_metrics: Dict[str, Dict[str, Any]]
+    evaluators: Dict[str, Dict[str, Any]]
+    system_evaluators: Dict[str, Dict[str, Any]]
     model_display_name: str
     metadata: Dict[str, Any]
+    results: List[EvaluatorResult] = field(default_factory=list)  # Foundry-aligned per-evaluator results
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
+        """Convert to dictionary.
+
+        Emits both 'evaluators' (new) and 'metrics' (Foundry compat) keys
+        so results work in both our local viewer and the Foundry portal.
+        """
         return {
             **self.inference_output.to_dict(),
             "run_id": self.run_id,
-            "metrics": self.metrics,
-            "system_metrics": self.system_metrics,
+            "evaluators": self.evaluators,
+            "metrics": self.evaluators,
+            "system_evaluators": self.system_evaluators,
+            "system_metrics": self.system_evaluators,
             "model_display_name": self.model_display_name,
             "metadata": self.metadata,
+            "results": [r.to_dict() for r in self.results],
         }

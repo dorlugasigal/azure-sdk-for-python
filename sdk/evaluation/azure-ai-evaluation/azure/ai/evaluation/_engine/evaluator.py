@@ -9,10 +9,11 @@ from itertools import product
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .config import Config, DatasetConfig, MetricConfig, TargetVariantConfig
-from .decorators import DATASET_REGISTRY, METRIC_REGISTRY, TARGET_REGISTRY, BaseDataset, BaseTarget as EveeBaseTarget
+from .config import Config, DatasetConfig, EvaluatorConfig, TargetVariantConfig
+from .decorators import DATASET_REGISTRY, EVALUATOR_REGISTRY, TARGET_REGISTRY, BaseDataset, BaseTarget as EveeBaseTarget
 from .discovery import discover_components
 from .models import EvaluationOutput, ExecutionContext, InferenceOutput
+from .otel_trace_capture import OTelTraceCapture
 from .tracking import (
     TrackingBackend,
     create_tracking_backend,
@@ -26,6 +27,26 @@ from .tracking import (
     ArtifactGeneratedEvent,
     ExperimentCompletedEvent,
 )
+
+
+def _extract_tool_definitions_from_trace(agent_trace) -> list:
+    """Extract tool definitions from OTel trace spans if available.
+
+    The OpenAI instrumentation captures tool definitions in the
+    gen_ai.tool.definitions span attribute when available.
+    """
+    for span in agent_trace.spans:
+        tool_defs = span.attributes.get("gen_ai.tool.definitions")
+        if tool_defs:
+            import json
+            if isinstance(tool_defs, str):
+                try:
+                    return json.loads(tool_defs)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+            elif isinstance(tool_defs, (list, tuple)):
+                return list(tool_defs)
+    return []
 
 
 class ModelEvaluator:
@@ -61,6 +82,12 @@ class ModelEvaluator:
         )
         self.tracking_backend.on_startup()
 
+        # Set up OTel trace capture — auto-enabled when OTel SDK is available
+        self._trace_capture: Optional[OTelTraceCapture] = None
+        trace_capture = OTelTraceCapture(capture_content=True)
+        if trace_capture.setup():
+            self._trace_capture = trace_capture
+
         if load_config_only:
             return
 
@@ -88,12 +115,12 @@ class ModelEvaluator:
             tracking_enabled=False,
         )
 
-        # Register targets and metrics
+        # Register targets and evaluators
         self.targets_registry = {}
-        self.metrics_registry = {}
+        self.evaluators_registry = {}
 
         self._register_targets()
-        self._register_metrics()
+        self._register_evaluators()
 
     def _create_experiment_dir(self) -> Path:
         """Create experiment directory."""
@@ -184,7 +211,13 @@ class ModelEvaluator:
                         query = input_data[field]
                         break
                 if not query:
-                    query = str(list(input_data.values())[0])
+                    if input_data:
+                        query = str(list(input_data.values())[0])
+                    else:
+                        raise ValueError(
+                            "input_data must contain at least one field "
+                            "(query, question, prompt, or input)"
+                        )
 
                 response = self._client.chat.completions.create(
                     model=self._deployment,
@@ -197,6 +230,116 @@ class ModelEvaluator:
 
         AzureAIModelTarget.__name__ = f"AzureAIModel_{target_cfg.name}"
         return AzureAIModelTarget
+
+    def _create_azure_ai_agent_target(self, target_cfg) -> type:
+        """Create a target that calls a Foundry agent via the Responses API."""
+        # Resolve project endpoint from target config, compute config, or tracking config
+        project_endpoint = getattr(target_cfg, "azure_ai_project", None)
+        if not project_endpoint and self.config.experiment.compute:
+            project_endpoint = getattr(self.config.experiment.compute, "azure_ai_project", None)
+        if not project_endpoint and self.config.experiment.tracking_backend:
+            project_endpoint = getattr(self.config.experiment.tracking_backend, "azure_ai_project", None)
+
+        agent_name = target_cfg.agent_name or target_cfg.name
+        agent_version = getattr(target_cfg, "agent_version", None)
+        agent_instructions = getattr(target_cfg, "instructions", None)
+
+        class AzureAIAgentTarget(EveeBaseTarget):
+            """Target that calls a Foundry agent and captures both text and structured output."""
+
+            def __init__(self, config=None, context=None):
+                super().__init__(context)
+                self._agent_name = agent_name
+                self._agent_version = agent_version
+
+                from azure.identity import DefaultAzureCredential
+                from azure.ai.projects import AIProjectClient
+
+                if not project_endpoint:
+                    raise ValueError(
+                        "azure_ai_project endpoint is required for agent targets. "
+                        "Set it on the target config, compute config, or tracking_backend config."
+                    )
+
+                self._project_client = AIProjectClient(
+                    endpoint=project_endpoint,
+                    credential=DefaultAzureCredential(),
+                )
+                self._client = self._project_client.get_openai_client()
+
+            def infer(self, input_data):
+                """Call the Foundry agent and return both text and structured output."""
+                query = ""
+                for field in ["query", "question", "prompt", "input"]:
+                    if field in input_data:
+                        query = input_data[field]
+                        break
+                if not query:
+                    if input_data:
+                        query = str(list(input_data.values())[0])
+                    else:
+                        raise ValueError(
+                            "input_data must contain at least one field "
+                            "(query, question, prompt, or input)"
+                        )
+
+                # Build agent reference
+                agent_ref = {"name": self._agent_name, "type": "agent_reference"}
+                if self._agent_version:
+                    agent_ref["version"] = self._agent_version
+
+                # Call agent via Responses API
+                extra_body = {"agent_reference": agent_ref}
+                if agent_instructions:
+                    extra_body["instructions"] = agent_instructions
+
+                try:
+                    response = self._client.responses.create(
+                        input=query,
+                        extra_body=extra_body,
+                    )
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to call agent '{self._agent_name}' "
+                        f"(version: {self._agent_version or 'latest'}): {e}"
+                    ) from e
+
+                # Capture both plain text and structured output (includes tool calls)
+                result = {"answer": getattr(response, "output_text", "")}
+
+                # Include structured output items for evaluators like task_adherence
+                try:
+                    output_items = []
+                    if hasattr(response, "output") and response.output:
+                        for item in response.output:
+                            if hasattr(item, "model_dump"):
+                                output_items.append(item.model_dump())
+                            elif hasattr(item, "to_dict"):
+                                output_items.append(item.to_dict())
+                            else:
+                                output_items.append(str(item))
+                    else:
+                        output_items = [{"type": "text", "text": result["answer"]}]
+                    result["output_items"] = output_items
+                except (AttributeError, TypeError):
+                    result["output_items"] = [{"type": "text", "text": result["answer"]}]
+
+                # Warn about unresolved function calls requiring client-side execution
+                import logging as _log
+                for item in getattr(response, "output", []) or []:
+                    if hasattr(item, 'type') and item.type == 'function_call':
+                        _log.getLogger(__name__).warning(
+                            "Agent '%s' returned a function_call '%s' that was not executed. "
+                            "Client-side function tool execution is not supported in local evaluation. "
+                            "Use Foundry-managed tools or cloud evaluation instead.",
+                            agent_name, getattr(item, 'name', 'unknown'),
+                        )
+                        break
+
+                return result
+
+        AzureAIAgentTarget.__name__ = f"AzureAIAgent_{target_cfg.name}"
+        return AzureAIAgentTarget
 
     def _register_target(self, target_cfg: TargetVariantConfig) -> None:
         """Register a target with all argument combinations."""
@@ -237,10 +380,16 @@ class ModelEvaluator:
                 }
 
         elif target_type == "azure_ai_agent":
-            _logging.getLogger(__name__).warning(
-                "Target '%s' type 'azure_ai_agent' is not yet supported. Skipping.",
-                target_name,
-            )
+            target_class = self._create_azure_ai_agent_target(target_cfg)
+            arg_combinations = [{}]  # Agents don't have cartesian args
+            named = self._simplify_combination_names(target_name, arg_combinations)
+            for variant_name, args in named.items():
+                target_instance = target_class(config=args, context=self.execution_context)
+                self.targets_registry[variant_name] = {
+                    "model": target_instance,
+                    "config": target_cfg,
+                    "args": args,
+                }
 
         else:
             # Custom target — existing behavior
@@ -348,25 +497,25 @@ class ModelEvaluator:
 
         return result
 
-    def _register_metrics(self) -> None:
-        """Register metrics from configuration."""
-        for metric_cfg in self.config.experiment.metrics:
-            metric_dict = metric_cfg.model_dump()
-            metric_name = metric_dict["name"]
-            effective_name = metric_dict.get("display_name") or metric_name
+    def _register_evaluators(self) -> None:
+        """Register evaluators from configuration."""
+        for evaluator_cfg in self.config.experiment.evaluators:
+            evaluator_dict = evaluator_cfg.model_dump()
+            evaluator_name = evaluator_dict["name"]
+            effective_name = evaluator_dict.get("display_name") or evaluator_name
 
-            if effective_name in self.metrics_registry:
-                raise ValueError(f"Metric '{effective_name}' already registered")
+            if effective_name in self.evaluators_registry:
+                raise ValueError(f"Evaluator '{effective_name}' already registered")
 
-            metric_class = METRIC_REGISTRY.get(metric_name)
-            if not metric_class:
+            evaluator_class = EVALUATOR_REGISTRY.get(evaluator_name)
+            if not evaluator_class:
                 raise ValueError(
-                    f"Metric '{metric_name}' not found in registry. "
-                    f"Available: {list(METRIC_REGISTRY.keys())}"
+                    f"Evaluator '{evaluator_name}' not found in registry. "
+                    f"Available: {list(EVALUATOR_REGISTRY.keys())}"
                 )
 
-            metric_instance = metric_class(metric_dict, self.execution_context)
-            self.metrics_registry[effective_name] = metric_instance
+            evaluator_instance = evaluator_class(evaluator_dict, self.execution_context)
+            self.evaluators_registry[effective_name] = evaluator_instance
 
     def load_dataset(
         self, dataset_config: Optional[DatasetConfig] = None, dataset_path: Optional[str] = None
@@ -441,6 +590,10 @@ class ModelEvaluator:
             ExperimentCompletedEvent(experiment_name=self.config.experiment.name)
         )
         self.tracking_backend.on_shutdown()
+
+        # Clean up OTel trace capture
+        if self._trace_capture is not None:
+            self._trace_capture.shutdown()
 
         # Include tracking info in summary
         tracking_type = type(self.tracking_backend).__name__
@@ -517,7 +670,7 @@ class ModelEvaluator:
                                     variant_failed += 1
                                 progress.advance(tasks[model_name])
 
-                        aggregated = self._aggregate_and_save_metrics(output_path, model_name)
+                        aggregated = self._aggregate_and_save_evaluators(output_path, model_name)
                         self.tracking_backend.on_results_analyzed(
                             ResultsAnalyzedEvent(run_id=run_id, metrics=aggregated)
                         )
@@ -528,9 +681,8 @@ class ModelEvaluator:
                         self.tracking_backend.on_artifact_generated(
                             ArtifactGeneratedEvent(run_id=run_id, artifact_path=summary_path, artifact_type="json")
                         )
-                        self.tracking_backend.on_run_completed(
-                            ModelRunCompletedEvent(run_id=run_id, status=OperationStatus.SUCCESS)
-                        )
+                        # Defer publishing to after progress display ends
+                        completed_runs.append((run_id, model_name))
                     except Exception as e:
                         self.tracking_backend.on_run_completed(
                             ModelRunCompletedEvent(run_id=run_id, status=OperationStatus.FAILED, error=str(e))
@@ -541,6 +693,7 @@ class ModelEvaluator:
                         total_failed += variant_failed
 
                 # Run all variants in parallel threads
+                completed_runs: list = []
                 threads = []
                 for model_name, model_data, output_path in variant_items:
                     t = threading.Thread(
@@ -552,6 +705,34 @@ class ModelEvaluator:
 
                 for t in threads:
                     t.join()
+
+            # Publish to tracking AFTER progress display ends (clean console output)
+            if completed_runs:
+                try:
+                    from rich.status import Status
+                    from rich.console import Console
+                    _con = Console()
+                    with Status(
+                        f"Publishing {len(completed_runs)} run(s) to Foundry...",
+                        console=_con,
+                        spinner="dots",
+                    ) as status:
+                        publish_threads = []
+                        for run_id, model_name in completed_runs:
+                            t = threading.Thread(
+                                target=self.tracking_backend.on_run_completed,
+                                args=(ModelRunCompletedEvent(run_id=run_id, status=OperationStatus.SUCCESS),),
+                            )
+                            t.start()
+                            publish_threads.append((t, model_name))
+                        for t, _ in publish_threads:
+                            t.join()
+                    _con.print(f"  [bold green]✓[/bold green] Published {len(completed_runs)} run(s) to Foundry")
+                except ImportError:
+                    for run_id, model_name in completed_runs:
+                        self.tracking_backend.on_run_completed(
+                            ModelRunCompletedEvent(run_id=run_id, status=OperationStatus.SUCCESS)
+                        )
 
         except ImportError:
             # No Rich — fall back to sequential
@@ -605,8 +786,8 @@ class ModelEvaluator:
                     futures, model_name, total, output_path,
                 )
 
-            # Aggregate metrics
-            aggregated_metrics = self._aggregate_and_save_metrics(output_path, model_name)
+            # Aggregate evaluators
+            aggregated_metrics = self._aggregate_and_save_evaluators(output_path, model_name)
 
             self.tracking_backend.on_results_analyzed(
                 ResultsAnalyzedEvent(run_id=run_id, metrics=aggregated_metrics)
@@ -661,34 +842,104 @@ class ModelEvaluator:
             pass  # tracking should never break evaluation
 
         start_time = time.perf_counter()
+        agent_trace = None
 
         try:
-            # Run inference
-            model_output = model.infer(record)
+            # Run inference — with OTel trace capture if enabled
+            if self._trace_capture is not None:
+                model_output, agent_trace = self._trace_capture.wrap_target_call(
+                    target_fn=model.infer,
+                    record=record,
+                    model_name=model_name,
+                    record_id=record_id,
+                )
+            else:
+                model_output = model.infer(record)
+
             response_time_ms = (time.perf_counter() - start_time) * 1000
 
-            # Create inference output
+            # Auto-enrich output with trace data if available.
+            # Users just return {"answer": "text"} and the engine automatically
+            # adds output_items, tool_calls, tool_definitions from the OTel trace.
+            if isinstance(model_output, dict):
+                has_trace_data = (
+                    agent_trace is not None
+                    and (agent_trace.llm_calls or agent_trace.log_events)
+                )
+                if has_trace_data:
+                    # Rich trace available — use it for full structured data
+                    if "output_items" not in model_output:
+                        model_output["output_items"] = agent_trace.to_conversation_format()
+                    if "tool_calls" not in model_output:
+                        model_output["tool_calls"] = agent_trace.to_tool_calls_format()
+                    if "tool_definitions" not in model_output:
+                        tool_defs = _extract_tool_definitions_from_trace(agent_trace)
+                        if tool_defs:
+                            model_output["tool_definitions"] = tool_defs
+                elif "output_items" not in model_output and "answer" in model_output:
+                    # No trace data — create minimal conversation from answer text
+                    # so agent evaluators don't get empty responses
+                    answer = model_output["answer"]
+                    model_output["output_items"] = [
+                        {"role": "assistant", "content": [{"type": "text", "text": str(answer)}]}
+                    ]
+
+            # Create inference output — attach trace data if captured
             inference_output = InferenceOutput(
                 output=model_output, model_name=model_name, record=record, args=kwargs
             )
+            if agent_trace is not None:
+                inference_output.agent_trace = agent_trace
 
-            # Compute metrics
-            metrics = {}
-            for metric_name, metric_instance in self.metrics_registry.items():
+            # Compute evaluators
+            evaluators = {}
+            for evaluator_name, evaluator_instance in self.evaluators_registry.items():
                 try:
-                    metric_result = metric_instance.compute(inference_output)
-                    metrics[metric_name] = metric_result
+                    evaluator_result = evaluator_instance.compute(inference_output)
+                    evaluators[evaluator_name] = evaluator_result
                 except Exception:
-                    metrics[metric_name] = {"error": "computation_failed"}
+                    evaluators[evaluator_name] = {"error": "computation_failed"}
+
+            # Emit OTel evaluation result events for each evaluator score
+            if agent_trace is not None and self._trace_capture is not None:
+                for eval_name, eval_result in evaluators.items():
+                    if isinstance(eval_result, dict) and "error" not in eval_result:
+                        score_val = None
+                        score_label = None
+                        explanation = None
+                        for k, v in eval_result.items():
+                            if isinstance(v, (int, float)):
+                                score_val = float(v)
+                            elif isinstance(v, str) and k in ("label", "result"):
+                                score_label = v
+                            elif isinstance(v, str) and k in ("reason", "explanation"):
+                                explanation = v
+                        self._trace_capture.emit_evaluation_result(
+                            trace_id=agent_trace.trace_id,
+                            span_id=agent_trace.parent_span_id,
+                            evaluator_name=eval_name,
+                            score_value=score_val,
+                            score_label=score_label,
+                            explanation=explanation,
+                        )
 
             system_metrics = {"response_time": {"response_time_ms": response_time_ms}}
+            # Include trace metrics in system metrics if available
+            if agent_trace is not None:
+                system_metrics["trace"] = {
+                    "llm_call_count": len(agent_trace.llm_calls),
+                    "total_input_tokens": agent_trace.total_input_tokens,
+                    "total_output_tokens": agent_trace.total_output_tokens,
+                    "total_llm_duration_ms": agent_trace.total_duration_ms,
+                    "tool_call_count": len(agent_trace.tool_calls),
+                }
 
             try:
                 self.tracking_backend.on_inference_completed(
                     InferenceCompletedEvent(
                         run_id=run_id,
                         record_id=record_id,
-                        output_data={"output": model_output, "metrics": metrics},
+                        output_data={"output": model_output, "evaluators": evaluators},
                         duration_ms=response_time_ms,
                         status=OperationStatus.SUCCESS,
                     )
@@ -699,8 +950,8 @@ class ModelEvaluator:
             return EvaluationOutput(
                 run_id=run_id,
                 inference_output=inference_output,
-                metrics=metrics,
-                system_metrics=system_metrics,
+                evaluators=evaluators,
+                system_evaluators=system_metrics,
                 model_display_name=model_display_name,
                 metadata={},
             )
@@ -767,11 +1018,11 @@ class ModelEvaluator:
         with open(output_path, "a") as f:
             f.write(json.dumps(eval_output.to_dict()) + "\n")
 
-    def _aggregate_and_save_metrics(self, results_path: Path, model_name: str) -> Dict[str, Any]:
-        """Aggregate metrics from results and save summary.
+    def _aggregate_and_save_evaluators(self, results_path: Path, model_name: str) -> Dict[str, Any]:
+        """Aggregate evaluator results and save summary.
 
         Returns:
-            Aggregated metrics dictionary.
+            Aggregated evaluators dictionary.
         """
         if not results_path.exists():
             return {}
@@ -782,20 +1033,20 @@ class ModelEvaluator:
             for line in f:
                 results.append(json.loads(line))
 
-        # Aggregate metrics
+        # Aggregate evaluators
         aggregated: Dict[str, Any] = {}
-        for metric_name, metric_instance in self.metrics_registry.items():
-            scores = [r["metrics"].get(metric_name, {}) for r in results]
+        for evaluator_name, evaluator_instance in self.evaluators_registry.items():
+            scores = [r.get("evaluators", r.get("metrics", {})).get(evaluator_name, {}) for r in results]
             scores = [s for s in scores if "error" not in s]  # Filter errors
 
             if scores:
                 try:
-                    aggregated[metric_name] = metric_instance.aggregate(scores)
+                    aggregated[evaluator_name] = evaluator_instance.aggregate(scores)
                 except Exception:
-                    aggregated[metric_name] = {"error": "aggregation_failed"}
+                    aggregated[evaluator_name] = {"error": "aggregation_failed"}
 
         # Save summary
-        summary = {"model": model_name, "total_records": len(results), "aggregated_metrics": aggregated}
+        summary = {"model": model_name, "total_records": len(results), "aggregated_evaluators": aggregated, "aggregated_metrics": aggregated}
 
         summary_path = results_path.parent / f"{model_name}_summary.json"
         with open(summary_path, "w") as f:

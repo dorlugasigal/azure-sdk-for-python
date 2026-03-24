@@ -13,7 +13,7 @@ from .models import ExecutionContext, InferenceOutput
 T = TypeVar("T")
 
 # Global registries
-METRIC_REGISTRY: Dict[str, type] = {}
+EVALUATOR_REGISTRY: Dict[str, type] = {}
 TARGET_REGISTRY: Dict[str, type] = {}
 DATASET_REGISTRY: Dict[str, type] = {}
 
@@ -44,8 +44,8 @@ def _get_params_from_config(signature: inspect.Signature, config: Dict[str, Any]
 
 
 # Base classes
-class BaseMetric(ABC):
-    """Base class for all metrics."""
+class BaseEvaluator(ABC):
+    """Base class for all evaluators."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, context: Optional[ExecutionContext] = None):
         config = config or {}
@@ -116,21 +116,21 @@ class BaseDataset(ABC):
 
 
 # Decorators
-def metric(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
-    """Decorator for creating metrics."""
+def evaluator(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
+    """Decorator for creating evaluators."""
 
     def decorator(cls: type[T]) -> type[T]:
-        metric_name = name if name is not None else cls.__name__
+        evaluator_name = name if name is not None else cls.__name__
 
-        if metric_name in METRIC_REGISTRY:
-            return cast(type[T], METRIC_REGISTRY[metric_name])
+        if evaluator_name in EVALUATOR_REGISTRY:
+            return cast(type[T], EVALUATOR_REGISTRY[evaluator_name])
 
-        class MetricWrapper(BaseMetric):
+        class EvaluatorWrapper(BaseEvaluator):
             def __init__(self, config: Optional[Dict[str, Any]] = None, context: Optional[ExecutionContext] = None, **extra_kwargs: Any):
                 config = config or {}
                 # Ensure name is set
                 if "name" not in config:
-                    config = {**config, "name": metric_name}
+                    config = {**config, "name": evaluator_name}
                 if "mapping" not in config:
                     config = {**config, "mapping": {}}
                 super().__init__(config, context)
@@ -170,6 +170,8 @@ def metric(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
                 elif inference_output:
                     # Evee engine mode (with field mapping)
                     fields = self._get_mapped_fields(inference_output)
+                    # Pass inference_output so evaluators can access agent_trace
+                    fields["inference_output"] = inference_output
                     return self.inner.compute(**fields)
                 else:
                     return self.inner.compute()
@@ -178,13 +180,13 @@ def metric(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
                 """Delegate to inner metric."""
                 return self.inner.aggregate(scores)
 
-        MetricWrapper.__name__ = cls.__name__
-        MetricWrapper.__doc__ = cls.__doc__
-        MetricWrapper.__module__ = cls.__module__
-        MetricWrapper.__qualname__ = cls.__qualname__
+        EvaluatorWrapper.__name__ = cls.__name__
+        EvaluatorWrapper.__doc__ = cls.__doc__
+        EvaluatorWrapper.__module__ = cls.__module__
+        EvaluatorWrapper.__qualname__ = cls.__qualname__
 
-        METRIC_REGISTRY[metric_name] = MetricWrapper
-        return cast(type[T], MetricWrapper)
+        EVALUATOR_REGISTRY[evaluator_name] = EvaluatorWrapper
+        return cast(type[T], EvaluatorWrapper)
 
     return decorator
 
@@ -277,3 +279,9 @@ def dataset(name: Optional[str] = None) -> Callable[[type[T]], type["BaseDataset
         return DatasetWrapper  # type: ignore[return-value]
 
     return decorator
+
+
+# Backward compatibility aliases
+METRIC_REGISTRY = EVALUATOR_REGISTRY
+BaseMetric = BaseEvaluator
+metric = evaluator

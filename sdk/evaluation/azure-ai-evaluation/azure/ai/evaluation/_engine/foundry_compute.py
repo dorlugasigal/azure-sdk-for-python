@@ -14,8 +14,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from .config import Config
 
-# Mapping from evee metric names to Foundry built-in evaluator names
-METRIC_TO_BUILTIN: Dict[str, str] = {
+# Mapping from evaluator short names to Foundry built-in evaluator names
+EVALUATOR_TO_BUILTIN: Dict[str, str] = {
     "f1_score": "builtin.f1_score",
     "relevance": "builtin.relevance",
     "coherence": "builtin.coherence",
@@ -30,7 +30,19 @@ METRIC_TO_BUILTIN: Dict[str, str] = {
     "sexual": "builtin.sexual",
     "self_harm": "builtin.self_harm",
     "hate_unfairness": "builtin.hate_unfairness",
+    "task_adherence": "builtin.task_adherence",
+    "tool_call_accuracy": "builtin.tool_call_accuracy",
+    "intent_resolution": "builtin.intent_resolution",
+    "task_completion": "builtin.task_completion",
+    "tool_selection": "builtin.tool_selection",
+    "tool_input_accuracy": "builtin.tool_input_accuracy",
+    "tool_output_utilization": "builtin.tool_output_utilization",
+    "tool_call_success": "builtin.tool_call_success",
+    "task_navigation_efficiency": "builtin.task_navigation_efficiency",
 }
+
+# Backward-compatible alias
+METRIC_TO_BUILTIN = EVALUATOR_TO_BUILTIN
 
 # NLP-based evaluators that don't need a model deployment
 NLP_EVALUATORS = {
@@ -39,6 +51,7 @@ NLP_EVALUATORS = {
     "builtin.rouge_score",
     "builtin.meteor_score",
     "builtin.gleu_score",
+    "builtin.task_navigation_efficiency",
 }
 
 _POLL_INTERVAL_SECONDS = 3
@@ -163,26 +176,26 @@ def _build_testing_criteria(
     """Convert configured metrics into Foundry testing_criteria entries.
 
     Known metrics are mapped to built-in evaluators.  Unknown metrics are
-    looked up in ``METRIC_REGISTRY`` and uploaded as code-based custom
+    looked up in ``EVALUATOR_REGISTRY`` and uploaded as code-based custom
     evaluators when *project_client* is available.
     """
     testing_criteria: List[Dict[str, Any]] = []
 
-    for metric_config in config.experiment.metrics:
-        builtin_name = METRIC_TO_BUILTIN.get(metric_config.name)
+    for evaluator_config in config.experiment.evaluators:
+        builtin_name = EVALUATOR_TO_BUILTIN.get(evaluator_config.name)
 
         if builtin_name:
             # Known built-in evaluator
             criteria_entry: Dict[str, Any] = {
                 "type": "azure_ai_evaluator",
-                "name": metric_config.display_name or metric_config.name,
+                "name": evaluator_config.display_name or evaluator_config.name,
                 "evaluator_name": builtin_name,
             }
 
             # Convert "dataset.field" / "model.field" -> "{{item.field}}"
-            if metric_config.mapping:
+            if evaluator_config.mapping:
                 data_mapping: Dict[str, str] = {}
-                for param, source_ref in metric_config.mapping.items():
+                for param, source_ref in evaluator_config.mapping.items():
                     field = source_ref.split(".", 1)[1]
                     data_mapping[param] = f"{{{{item.{field}}}}}"
                 criteria_entry["data_mapping"] = data_mapping
@@ -194,19 +207,19 @@ def _build_testing_criteria(
                 }
 
         elif project_client:
-            # Unknown metric — try to upload as custom code-based evaluator
+            # Unknown evaluator — try to upload as custom code-based evaluator
             criteria_entry = _upload_custom_metric(
-                metric_config, project_client, deployment_name
+                evaluator_config, project_client, deployment_name
             )
             if criteria_entry is None:
                 raise ValueError(
-                    f"Metric '{metric_config.name}' is not a built-in evaluator and "
+                    f"Evaluator '{evaluator_config.name}' is not a built-in evaluator and "
                     f"could not be uploaded as a custom evaluator."
                 )
         else:
             raise ValueError(
-                f"Metric '{metric_config.name}' is not supported for remote evaluation. "
-                f"Supported metrics: {', '.join(sorted(METRIC_TO_BUILTIN.keys()))}"
+                f"Evaluator '{evaluator_config.name}' is not supported for remote evaluation. "
+                f"Supported evaluators: {', '.join(sorted(EVALUATOR_TO_BUILTIN.keys()))}"
             )
 
         testing_criteria.append(criteria_entry)
@@ -260,7 +273,7 @@ def _get_compute_source(inner_cls: type) -> Optional[str]:
 
 
 def _build_grade_code(
-    metric_name: str,
+    evaluator_name: str,
     compute_source: str,
     mapping: Dict[str, str],
 ) -> str:
@@ -277,7 +290,7 @@ def _build_grade_code(
 
     grade_code = (
         f"def grade(sample: dict, item: dict) -> float:\n"
-        f'    """Auto-generated from @metric(\'{metric_name}\')."""\n'
+        f'    """Auto-generated from @metric(\'{evaluator_name}\')."""\n'
         f"    # Try all possible locations where data might be\n"
     )
 
@@ -313,37 +326,37 @@ def _build_grade_code(
 
 
 def _upload_custom_metric(
-    metric_config: Any,
+    evaluator_config: Any,
     project_client: Any,
     deployment_name: Optional[str],
 ) -> Optional[Dict[str, Any]]:
     """Upload a custom ``@metric`` as a code-based evaluator to Foundry catalog.
 
-    Synthesises a ``grade(sample, item)`` function from the metric's
+    Synthesises a ``grade(sample, item)`` function from the evaluator's
     ``compute()`` method and registers it via
     ``project_client.beta.evaluators.create_version()``.
     """
-    from .decorators import METRIC_REGISTRY
+    from .decorators import EVALUATOR_REGISTRY
 
     logger = logging.getLogger(__name__)
 
-    metric_name = metric_config.name
-    wrapper_cls = METRIC_REGISTRY.get(metric_name)
+    evaluator_name = evaluator_config.name
+    wrapper_cls = EVALUATOR_REGISTRY.get(evaluator_name)
     if not wrapper_cls:
         return None
 
     inner_cls = _extract_inner_class(wrapper_cls)
     if inner_cls is None:
-        logger.warning("Could not extract inner class for metric '%s'.", metric_name)
+        logger.warning("Could not extract inner class for evaluator '%s'.", evaluator_name)
         return None
 
     compute_source = _get_compute_source(inner_cls)
     if compute_source is None:
-        logger.warning("Could not retrieve compute() source for metric '%s'.", metric_name)
+        logger.warning("Could not retrieve compute() source for evaluator '%s'.", evaluator_name)
         return None
 
-    mapping = metric_config.mapping or {}
-    full_code = _build_grade_code(metric_name, compute_source, mapping)
+    mapping = evaluator_config.mapping or {}
+    full_code = _build_grade_code(evaluator_name, compute_source, mapping)
 
     # Build data schema from mapping — use param names (what grade() reads)
     data_schema_props: Dict[str, Any] = {}
@@ -357,12 +370,12 @@ def _upload_custom_metric(
         )
 
         result = project_client.beta.evaluators.create_version(
-            name=metric_name,
+            name=evaluator_name,
             evaluator_version={
-                "name": metric_name,
+                "name": evaluator_name,
                 "categories": [EvaluatorCategory.QUALITY],
-                "display_name": metric_name,
-                "description": f"Custom evaluator: {metric_name}",
+                "display_name": evaluator_name,
+                "description": f"Custom evaluator: {evaluator_name}",
                 "definition": {
                     "type": EvaluatorDefinitionType.CODE,
                     "code_text": full_code,
@@ -396,13 +409,13 @@ def _upload_custom_metric(
             },
         )
     except Exception as exc:  # pylint: disable=broad-except
-        logger.warning("Failed to upload custom evaluator '%s': %s", metric_name, exc)
+        logger.warning("Failed to upload custom evaluator '%s': %s", evaluator_name, exc)
         return None
 
     criteria_entry: Dict[str, Any] = {
         "type": "azure_ai_evaluator",
-        "name": metric_name,
-        "evaluator_name": metric_name,
+        "name": evaluator_name,
+        "evaluator_name": evaluator_name,
         "initialization_parameters": {
             "deployment_name": deployment_name or "gpt-4.1-mini",
             "pass_threshold": 0.5,
@@ -622,6 +635,35 @@ def run_remote_evaluation(
 
         _progress(f"Expanding {len(variants)} model variants...")
 
+    # --- Remap response fields for model/agent targets ---------------------
+    # Must happen BEFORE eval creation since testing_criteria are baked into the eval
+    query_field = None
+    has_model_targets = any(v.get("_type") in ("azure_ai_model", "azure_ai_agent") for v in variants)
+    has_agent_targets = any(v.get("_type") == "azure_ai_agent" for v in variants)
+    if has_model_targets:
+        for field in ["query", "question", "prompt", "input"]:
+            if field in records[0]:
+                query_field = field
+                break
+        if not query_field:
+            query_field = list(records[0].keys())[0]
+
+        # Update testing criteria: response mappings → model/agent output
+        for criteria in testing_criteria:
+            if "data_mapping" in criteria:
+                for param in list(criteria["data_mapping"].keys()):
+                    if param == "response":
+                        current = criteria["data_mapping"][param]
+                        if "output_items" in current:
+                            criteria["data_mapping"][param] = "{{sample.output_items}}"
+                        elif has_agent_targets:
+                            # Agent targets: output_text is often empty when agents
+                            # make tool calls. Use output_items for all evaluators
+                            # so they see the full structured response.
+                            criteria["data_mapping"][param] = "{{sample.output_items}}"
+                        else:
+                            criteria["data_mapping"][param] = "{{sample.output_text}}"
+
     # --- Create evaluation -------------------------------------------------
     _progress("Creating evaluation...")
 
@@ -646,24 +688,6 @@ def run_remote_evaluation(
             SourceFileContentContent,
         )
 
-        # Determine query field for model-target variants
-        query_field = None
-        has_model_targets = any(v.get("_type") in ("azure_ai_model", "azure_ai_agent") for v in variants)
-        if has_model_targets:
-            for field in ["query", "question", "prompt", "input"]:
-                if field in records[0]:
-                    query_field = field
-                    break
-            if not query_field:
-                query_field = list(records[0].keys())[0]
-
-            # Update testing criteria: response mappings → model output
-            for criteria in testing_criteria:
-                if "data_mapping" in criteria:
-                    for param in list(criteria["data_mapping"].keys()):
-                        if param == "response":
-                            criteria["data_mapping"][param] = "{{sample.output_text}}"
-
         def _submit_one_run(variant_name: str, variant: Dict[str, Any]) -> Any:
             """Submit a single run (dataset or model target)."""
             variant_args = variant["_args"]
@@ -672,18 +696,32 @@ def run_remote_evaluation(
 
             if variant_type in ("azure_ai_model", "azure_ai_agent"):
                 # Model/agent target evaluation
+                # Build input messages template
+                template_messages = []
+
+                # Add developer/system instructions if configured
+                if target_cfg and hasattr(target_cfg, 'instructions') and target_cfg.instructions:
+                    template_messages.append({
+                        "type": "message",
+                        "role": "developer",
+                        "content": {
+                            "type": "input_text",
+                            "text": target_cfg.instructions,
+                        },
+                    })
+
+                template_messages.append({
+                    "type": "message",
+                    "role": "user",
+                    "content": {
+                        "type": "input_text",
+                        "text": "{{item." + query_field + "}}",
+                    },
+                })
+
                 input_messages: Dict[str, Any] = {
                     "type": "template",
-                    "template": [
-                        {
-                            "type": "message",
-                            "role": "user",
-                            "content": {
-                                "type": "input_text",
-                                "text": "{{item." + query_field + "}}",
-                            },
-                        }
-                    ],
+                    "template": template_messages,
                 }
 
                 if variant_type == "azure_ai_agent":

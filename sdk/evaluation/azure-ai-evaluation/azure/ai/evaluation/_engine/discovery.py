@@ -84,7 +84,7 @@ def _discover_in_directory(directory: Path) -> None:
         "experiment",
     }
 
-    target_decorators = {"model", "metric", "dataset", "target"}
+    target_decorators = {"model", "metric", "dataset", "target", "evaluator"}
     exclude_dirs_frozen = frozenset(exclude_dirs)
 
     def _is_excluded_path(path: Path) -> bool:
@@ -141,8 +141,14 @@ def _discover_in_directory(directory: Path) -> None:
 
             # Import the module
             try:
-                importlib.import_module(module_path)
-                _IMPORTED_MODULES.add(module_path)
+                import importlib.util as _ilu
+                spec = _ilu.spec_from_file_location(module_path, str(file_path))
+                if spec and spec.loader:
+                    import sys
+                    mod = _ilu.module_from_spec(spec)
+                    sys.modules[module_path] = mod
+                    spec.loader.exec_module(mod)
+                    _IMPORTED_MODULES.add(module_path)
             except Exception:
                 # Continue with other modules even if one fails
                 pass

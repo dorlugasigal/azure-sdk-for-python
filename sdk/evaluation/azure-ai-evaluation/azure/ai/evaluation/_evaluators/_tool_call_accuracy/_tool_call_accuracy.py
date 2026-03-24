@@ -339,3 +339,63 @@ class ToolCallAccuracyEvaluator(PromptyEvaluatorBase[Union[str, float]]):
         :rtype: Dict[str, Union[str, float]]
         """
         return super().__call__(*args, **kwargs)
+
+
+# === evee engine integration ===
+try:
+    from azure.ai.evaluation._engine.decorators import evaluator as _evee_evaluator, BaseEvaluator as _EveeBaseEvaluator
+
+    @_evee_evaluator(name='tool_call_accuracy')
+    class _ToolCallAccuracyEveeEvaluator(_EveeBaseEvaluator):
+        """Bridge: real ToolCallAccuracyEvaluator registered as evee @evaluator."""
+        def __init__(self, connections_registry=None, context=None, **kwargs):
+            super().__init__(**kwargs)
+            model_config = self._resolve_model_config(connections_registry)
+            self._evaluator = ToolCallAccuracyEvaluator(model_config=model_config) if model_config else None
+
+        @staticmethod
+        def _resolve_model_config(connections_registry):
+            if not connections_registry:
+                return None
+            conn = connections_registry.get("default", {})
+            if hasattr(conn, "model_dump"):
+                conn = conn.model_dump()
+            if not isinstance(conn, dict) or not conn.get("azure_endpoint"):
+                return None
+            return {
+                "azure_endpoint": conn["azure_endpoint"],
+                "azure_deployment": conn.get("azure_deployment", "gpt-4.1-mini"),
+                "type": "azure_openai",
+            }
+
+        def compute(self, query='', response='', tool_definitions=None, tool_calls=None, **kwargs):
+            if not self._evaluator:
+                return {"tool_call_accuracy": 0.0, "tool_call_accuracy_result": "error", "tool_call_accuracy_reason": "No model config"}
+            try:
+                import json
+                call_kwargs = {"query": query, "response": response}
+                if tool_definitions:
+                    if isinstance(tool_definitions, str):
+                        try:
+                            call_kwargs["tool_definitions"] = json.loads(tool_definitions)
+                        except (json.JSONDecodeError, ValueError):
+                            call_kwargs["tool_definitions"] = tool_definitions
+                    else:
+                        call_kwargs["tool_definitions"] = tool_definitions
+                if tool_calls:
+                    if isinstance(tool_calls, str):
+                        try:
+                            call_kwargs["tool_calls"] = json.loads(tool_calls)
+                        except (json.JSONDecodeError, ValueError):
+                            call_kwargs["tool_calls"] = tool_calls
+                    else:
+                        call_kwargs["tool_calls"] = tool_calls
+                return self._evaluator(**call_kwargs)
+            except Exception as e:
+                return {"tool_call_accuracy": 0.0, "tool_call_accuracy_result": "error", "tool_call_accuracy_reason": str(e)}
+
+        def aggregate(self, scores):
+            vals = [s.get('tool_call_accuracy', 0) for s in scores if isinstance(s.get('tool_call_accuracy'), (int, float))]
+            return {'tool_call_accuracy_mean': round(sum(vals) / len(vals), 4)} if vals else {}
+except ImportError:
+    pass  # engine not installed
