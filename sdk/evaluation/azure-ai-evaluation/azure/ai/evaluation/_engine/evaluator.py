@@ -147,22 +147,24 @@ def _normalize_output_items(items: list) -> list:
 
 
 def _normalize_tool_definitions(tool_defs: list) -> list:
-    """Normalize tool definitions from any format to OpenAI function schema.
+    """Normalize tool definitions to the flat format SDK evaluators expect.
 
+    Evaluators expect: {"name": "...", "type": "function", "description": "...", "parameters": {...}}
+    
     Handles:
     - Raw Python functions (with annotations/docstrings)
     - MAF FunctionTool objects (have .to_json_schema_spec())
     - LangChain tools (have .name, .description, .args_schema)
-    - Already-normalized dicts (pass through)
+    - OpenAI nested format: {"type": "function", "function": {"name": ...}} → flattened
+    - Already-flat dicts (pass through)
     """
     normalized = []
     for tool in tool_defs:
         if isinstance(tool, dict):
-            # Already a dict — pass through
-            normalized.append(tool)
+            normalized.append(_flatten_tool_def(tool))
         elif hasattr(tool, "to_json_schema_spec"):
             # MAF FunctionTool
-            normalized.append(tool.to_json_schema_spec())
+            normalized.append(_flatten_tool_def(tool.to_json_schema_spec()))
         elif hasattr(tool, "args_schema") and hasattr(tool, "name"):
             # LangChain tool
             schema = {}
@@ -172,12 +174,10 @@ def _normalize_tool_definitions(tool_defs: list) -> list:
                 except Exception:
                     pass
             normalized.append({
+                "name": tool.name,
                 "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": getattr(tool, "description", ""),
-                    "parameters": schema,
-                },
+                "description": getattr(tool, "description", ""),
+                "parameters": schema,
             })
         elif callable(tool):
             # Raw Python function — extract from signature + docstring
@@ -202,16 +202,26 @@ def _normalize_tool_definitions(tool_defs: list) -> list:
                     required.append(pname)
                 props[pname] = prop
             normalized.append({
+                "name": getattr(tool, "__name__", "unknown"),
                 "type": "function",
-                "function": {
-                    "name": getattr(tool, "__name__", "unknown"),
-                    "description": getattr(tool, "__doc__", "") or "",
-                    "parameters": {"type": "object", "properties": props, "required": required},
-                },
+                "description": getattr(tool, "__doc__", "") or "",
+                "parameters": {"type": "object", "properties": props, "required": required},
             })
         else:
-            # Unknown — try str representation
-            normalized.append({"type": "function", "function": {"name": str(tool)}})
+            normalized.append({"name": str(tool), "type": "function"})
+    return normalized
+
+
+def _flatten_tool_def(d: dict) -> dict:
+    """Flatten nested OpenAI format to flat format for evaluators.
+    
+    {"type": "function", "function": {"name": "x", ...}} → {"name": "x", "type": "function", ...}
+    """
+    if "function" in d and isinstance(d["function"], dict) and "name" in d["function"]:
+        flat = {"type": d.get("type", "function")}
+        flat.update(d["function"])
+        return flat
+    return d
     return normalized
 
 
