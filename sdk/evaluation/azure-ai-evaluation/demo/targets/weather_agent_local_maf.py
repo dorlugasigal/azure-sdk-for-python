@@ -59,7 +59,7 @@ def bring_umbrella(
     return f"{'Yes, bring an umbrella' if should else 'No umbrella needed'} — the weather is {weather_condition}."
 
 
-@target(name="weather_agent_local")
+@target(name="weather_agent_local_maf")
 class WeatherAgentLocalTarget(BaseTarget):
     """Evaluates a MAF agent with function tools, executed locally.
 
@@ -97,13 +97,13 @@ class WeatherAgentLocalTarget(BaseTarget):
         )
 
     def infer(self, input: Dict[str, Any]) -> Dict[str, Any]:
-        """Run the MAF agent and return the answer with structured data."""
+        """Run the MAF agent and return just the answer.
+
+        The engine transparently captures tool calls and messages via OTel
+        when available, or accepts framework-native output as-is.
+        """
         query = input.get("query") or input.get("question") or input.get("prompt") or str(list(input.values())[0])
 
         result = _run_async(self._agent.run(query))
 
-        return {
-            "answer": result.text or "",
-            "output_items": [msg.to_dict() for msg in result.messages],
-            "tool_definitions": self._tools,  # Engine normalizes automatically
-        }
+        return {"answer": result.text or ""}

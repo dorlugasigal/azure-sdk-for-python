@@ -706,7 +706,7 @@ def reformat_conversation_history(query, logger=None, include_system_messages=Fa
         #   Lower percentage of mode in Likert scale (73.4% vs 75.4%)
         #   Lower pairwise agreement between LLMs (85% vs 90% at the pass/fail level with threshold of 3)
         if logger:
-            logger.warning("Conversation history could not be parsed, falling back to original query")
+            logger.debug("Conversation history could not be parsed, falling back to original query")
         return query
 
 

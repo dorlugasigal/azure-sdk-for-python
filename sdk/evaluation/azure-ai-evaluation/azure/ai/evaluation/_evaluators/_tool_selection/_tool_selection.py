@@ -303,3 +303,51 @@ class _ToolSelectionEvaluator(PromptyEvaluatorBase[Union[str, float]]):
             return round(accuracy, 2)
         else:
             return 100.0
+
+
+# === evee engine integration ===
+try:
+    from azure.ai.evaluation._engine.decorators import evaluator as _evee_evaluator, BaseEvaluator as _EveeBaseEvaluator
+
+    @_evee_evaluator(name='tool_selection')
+    class _ToolSelectionEvaluatorEveeEvaluator(_EveeBaseEvaluator):
+        """Bridge: real _ToolSelectionEvaluator registered as evee @evaluator."""
+        def __init__(self, connections_registry=None, context=None, **kwargs):
+            super().__init__(**kwargs)
+            model_config = self._resolve_model_config(connections_registry)
+            self._evaluator = _ToolSelectionEvaluator(model_config=model_config) if model_config else None
+
+        @staticmethod
+        def _resolve_model_config(connections_registry):
+            if not connections_registry:
+                return None
+            conn = connections_registry.get("default", {})
+            if hasattr(conn, "model_dump"):
+                conn = conn.model_dump()
+            if not isinstance(conn, dict) or not conn.get("azure_endpoint"):
+                return None
+            return {"azure_endpoint": conn["azure_endpoint"], "azure_deployment": conn.get("azure_deployment", "gpt-4.1-mini"), "type": "azure_openai"}
+
+        def compute(self, query='', response='', tool_definitions=None, tool_calls=None, **kwargs):
+            if not self._evaluator:
+                return {"tool_selection": 0.0, "tool_selection_result": "error", "tool_selection_reason": "No model config"}
+            try:
+                import json as _json
+                call_kwargs = {}
+                if query: call_kwargs["query"] = query
+                if response: call_kwargs["response"] = response
+                if tool_definitions:
+                    if isinstance(tool_definitions, str):
+                        try: call_kwargs["tool_definitions"] = _json.loads(tool_definitions)
+                        except: call_kwargs["tool_definitions"] = tool_definitions
+                    else: call_kwargs["tool_definitions"] = tool_definitions
+                if tool_calls: call_kwargs["tool_calls"] = tool_calls
+                return self._evaluator(**call_kwargs)
+            except Exception as e:
+                return {"tool_selection": 0.0, "tool_selection_result": "error", "tool_selection_reason": str(e)}
+
+        def aggregate(self, scores):
+            vals = [s.get("tool_selection", 0) for s in scores if isinstance(s.get("tool_selection"), (int, float))]
+            return {"tool_selection_mean": round(sum(vals) / len(vals), 4)} if vals else {}
+except ImportError:
+    pass  # engine not installed

@@ -73,8 +73,8 @@ class WeatherAgentOpenAITarget(BaseTarget):
     def infer(self, input: Dict[str, Any]) -> Dict[str, Any]:
         """Run the OpenAI agent and return just the answer.
 
-        The engine's OTel tracing automatically captures all LLM calls,
-        tool invocations, and messages — no manual tracking needed.
+        The engine transparently captures tool calls and messages via OTel
+        when available.
         """
         query = input.get("query") or input.get("question") or input.get("prompt") or str(list(input.values())[0])
 
@@ -109,6 +109,6 @@ class WeatherAgentOpenAITarget(BaseTarget):
                 previous_response_id=response.id,
             )
 
-        # Just return the answer — engine auto-enriches with trace data
+        # Just return the answer — engine handles the rest via OTel
         return {"answer": response.output_text or ""}
 

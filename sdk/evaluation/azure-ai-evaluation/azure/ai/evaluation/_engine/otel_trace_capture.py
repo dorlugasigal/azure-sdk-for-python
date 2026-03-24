@@ -100,29 +100,76 @@ class AgentTrace:
 
     @property
     def tool_calls(self) -> List[Dict[str, Any]]:
-        """Extract tool calls from log events."""
+        """Extract tool calls from spans and log events."""
         tools = []
+        seen_ids: set = set()
+
+        # From spans (MAF format — execute_tool spans + output.messages on chat spans)
+        for span in self.spans:
+            if span.operation_name == "execute_tool":
+                tc_id = span.attributes.get("gen_ai.tool.call.id", "")
+                if tc_id and tc_id not in seen_ids:
+                    seen_ids.add(tc_id)
+                    args = span.attributes.get("gen_ai.tool.call.arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                    tools.append({
+                        "id": tc_id,
+                        "name": span.attributes.get("gen_ai.tool.name", ""),
+                        "arguments": args,
+                        "result": span.attributes.get("gen_ai.tool.call.result"),
+                        "span_id": span.span_id,
+                    })
+
+            # Also check output.messages for tool_call parts
+            out_msgs = span.attributes.get("gen_ai.output.messages")
+            if out_msgs:
+                msgs = json.loads(out_msgs) if isinstance(out_msgs, str) else out_msgs
+                if isinstance(msgs, list):
+                    for msg in msgs:
+                        if not isinstance(msg, dict):
+                            continue
+                        for part in msg.get("parts", []):
+                            if isinstance(part, dict) and part.get("type") == "tool_call":
+                                tc_id = part.get("id", "")
+                                if tc_id and tc_id not in seen_ids:
+                                    seen_ids.add(tc_id)
+                                    tools.append({
+                                        "id": tc_id,
+                                        "name": part.get("name", ""),
+                                        "arguments": part.get("arguments", {}),
+                                        "span_id": span.span_id,
+                                    })
+
+        # From log events (OpenAI instrumentor format)
         for evt in self.log_events:
             body = evt.body if isinstance(evt.body, dict) else {}
-            # Check for tool calls in output messages
             if "message" in body and isinstance(body.get("message"), dict):
                 msg = body["message"]
                 for tc in msg.get("tool_calls", []):
-                    tools.append({
-                        "id": tc.get("id"),
-                        "name": tc.get("function", {}).get("name"),
-                        "arguments": tc.get("function", {}).get("arguments"),
-                        "span_id": evt.span_id,
-                    })
-            # Direct tool_calls field
+                    tc_id = tc.get("id", "")
+                    if tc_id and tc_id not in seen_ids:
+                        seen_ids.add(tc_id)
+                        tools.append({
+                            "id": tc_id,
+                            "name": tc.get("function", {}).get("name"),
+                            "arguments": tc.get("function", {}).get("arguments"),
+                            "span_id": evt.span_id,
+                        })
             elif "tool_calls" in body:
                 for tc in body["tool_calls"]:
-                    tools.append({
-                        "id": tc.get("id"),
-                        "name": tc.get("function", {}).get("name"),
-                        "arguments": tc.get("function", {}).get("arguments"),
-                        "span_id": evt.span_id,
-                    })
+                    tc_id = tc.get("id", "")
+                    if tc_id and tc_id not in seen_ids:
+                        seen_ids.add(tc_id)
+                        tools.append({
+                            "id": tc_id,
+                            "name": tc.get("function", {}).get("name"),
+                            "arguments": tc.get("function", {}).get("arguments"),
+                            "span_id": evt.span_id,
+                        })
         return tools
 
     @property
@@ -168,105 +215,123 @@ class AgentTrace:
     def to_conversation_format(self) -> List[Dict[str, Any]]:
         """Convert trace to the conversation message format expected by SDK evaluators.
 
-        Produces a list of message dicts compatible with ToolCallAccuracyEvaluator,
-        TaskAdherenceEvaluator, and other built-in evaluators that expect:
-          - {"role": "assistant", "content": [{"type": "tool_call", ...}]}
-          - {"role": "tool", "tool_call_id": "...", "content": [{"type": "tool_result", ...}]}
-          - {"role": "assistant", "content": [{"type": "text", "text": "..."}]}
+        Builds from span attributes (MAF) or log events (OpenAI instrumentor).
         """
         messages: List[Dict[str, Any]] = []
-        seen_tool_call_ids: set = set()
-        seen_tool_result_ids: set = set()
+        seen_tc_ids: set = set()
+        seen_result_ids: set = set()
 
+        # Try span attributes first (MAF emits gen_ai.output.messages here)
+        for span in self.spans:
+            # Tool results from execute_tool spans
+            if span.operation_name == "execute_tool":
+                tc_id = span.attributes.get("gen_ai.tool.call.id", "")
+                result = span.attributes.get("gen_ai.tool.call.result", "")
+                if tc_id and tc_id not in seen_result_ids:
+                    seen_result_ids.add(tc_id)
+                    messages.append({"role": "tool", "tool_call_id": tc_id,
+                                     "content": [{"type": "tool_result", "tool_call_id": tc_id, "tool_result": str(result)}]})
+                continue
+
+            # Skip invoke_agent spans — they duplicate child span data
+            if span.operation_name in ("invoke_agent", "invoke_workflow"):
+                continue
+
+            out_raw = span.attributes.get("gen_ai.output.messages")
+            if not out_raw:
+                continue
+            out_msgs = json.loads(out_raw) if isinstance(out_raw, str) else out_raw
+            if not isinstance(out_msgs, list):
+                continue
+            for msg in out_msgs:
+                if not isinstance(msg, dict):
+                    continue
+                role = msg.get("role", "assistant")
+                items = []
+                for part in msg.get("parts", []):
+                    if not isinstance(part, dict):
+                        continue
+                    ptype = part.get("type", "")
+                    if ptype == "tool_call":
+                        tc_id = part.get("id", "")
+                        if tc_id and tc_id not in seen_tc_ids:
+                            seen_tc_ids.add(tc_id)
+                            args = part.get("arguments", {})
+                            if isinstance(args, str):
+                                try: args = json.loads(args)
+                                except: pass
+                            items.append({"type": "tool_call", "tool_call_id": tc_id, "name": part.get("name", ""), "arguments": args})
+                    elif ptype == "text":
+                        text = part.get("content", part.get("text", ""))
+                        if text:
+                            items.append({"type": "text", "text": text})
+                if items:
+                    messages.append({"role": role, "content": items})
+
+        if messages:
+            return self._sort_conversation(messages)
+
+        # Fall back to log events (OpenAI instrumentor format)
         for evt in self.log_events:
             body = evt.body if isinstance(evt.body, dict) else {}
-
-            # Output event with tool_calls (assistant requesting tools)
             if "message" in body and isinstance(body.get("message"), dict):
                 msg = body["message"]
                 role = msg.get("role", "assistant")
-
                 if msg.get("tool_calls"):
-                    content_items = []
+                    items = []
                     for tc in msg["tool_calls"]:
                         tc_id = tc.get("id", "")
-                        if tc_id in seen_tool_call_ids:
-                            continue
-                        seen_tool_call_ids.add(tc_id)
-                        func = tc.get("function", {})
-                        args = func.get("arguments", {})
-                        if isinstance(args, str):
-                            try:
-                                args = json.loads(args)
-                            except (json.JSONDecodeError, TypeError):
-                                pass
-                        content_items.append({
-                            "type": "tool_call",
-                            "tool_call_id": tc_id,
-                            "name": func.get("name", ""),
-                            "arguments": args,
-                        })
-                    if content_items:
-                        messages.append({"role": role, "content": content_items})
-
+                        if tc_id and tc_id not in seen_tc_ids:
+                            seen_tc_ids.add(tc_id)
+                            func = tc.get("function", {})
+                            args = func.get("arguments", {})
+                            if isinstance(args, str):
+                                try: args = json.loads(args)
+                                except: pass
+                            items.append({"type": "tool_call", "tool_call_id": tc_id, "name": func.get("name", ""), "arguments": args})
+                    if items:
+                        messages.append({"role": role, "content": items})
                 elif msg.get("content"):
-                    messages.append({
-                        "role": role,
-                        "content": [{"type": "text", "text": msg["content"]}],
-                    })
-
-            # Output event with direct tool_calls (history replayed — skip if already seen)
-            elif "tool_calls" in body and "message" not in body:
-                content_items = []
-                for tc in body["tool_calls"]:
-                    tc_id = tc.get("id", "")
-                    if tc_id in seen_tool_call_ids:
-                        continue
-                    seen_tool_call_ids.add(tc_id)
-                    func = tc.get("function", {})
-                    args = func.get("arguments", {})
-                    if isinstance(args, str):
-                        try:
-                            args = json.loads(args)
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-                    content_items.append({
-                        "type": "tool_call",
-                        "tool_call_id": tc_id,
-                        "name": func.get("name", ""),
-                        "arguments": args,
-                    })
-                if content_items:
-                    messages.append({"role": "assistant", "content": content_items})
-
-            # Tool result event (content + id = tool response)
+                    messages.append({"role": role, "content": [{"type": "text", "text": msg["content"]}]})
             elif "content" in body and "id" in body and "message" not in body:
-                result_id = body["id"]
-                if result_id not in seen_tool_result_ids:
-                    seen_tool_result_ids.add(result_id)
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": result_id,
-                        "content": [{"type": "tool_result", "tool_result": body["content"]}],
-                    })
-
-            # Plain output with finish_reason (final assistant response)
+                rid = body["id"]
+                if rid not in seen_result_ids:
+                    seen_result_ids.add(rid)
+                    messages.append({"role": "tool", "tool_call_id": rid,
+                                     "content": [{"type": "tool_result", "tool_call_id": rid, "tool_result": body["content"]}]})
             elif "index" in body and "finish_reason" in body:
                 msg = body.get("message", {})
                 if isinstance(msg, dict) and msg.get("content"):
-                    messages.append({
-                        "role": msg.get("role", "assistant"),
-                        "content": [{"type": "text", "text": msg["content"]}],
-                    })
+                    messages.append({"role": msg.get("role", "assistant"), "content": [{"type": "text", "text": msg["content"]}]})
 
         return messages
 
-    def to_tool_calls_format(self) -> List[Dict[str, Any]]:
-        """Convert trace tool calls to the format expected by ToolCallAccuracyEvaluator.
+    def _sort_conversation(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Sort messages so tool results follow their corresponding tool calls."""
+        tc_msgs, result_map, text_msgs = [], {}, []
+        for msg in messages:
+            if msg["role"] == "tool":
+                result_map[msg.get("tool_call_id", "")] = msg
+            elif msg["role"] == "assistant":
+                has_tc = any(isinstance(c, dict) and c.get("type") == "tool_call" for c in msg.get("content", []))
+                if has_tc:
+                    tc_msgs.append(msg)
+                else:
+                    text_msgs.append(msg)
+        sorted_msgs = []
+        for tc_msg in tc_msgs:
+            sorted_msgs.append(tc_msg)
+            for c in tc_msg.get("content", []):
+                if isinstance(c, dict) and c.get("type") == "tool_call":
+                    tc_id = c.get("tool_call_id", "")
+                    if tc_id in result_map:
+                        sorted_msgs.append(result_map.pop(tc_id))
+        sorted_msgs.extend(result_map.values())
+        sorted_msgs.extend(text_msgs)
+        return sorted_msgs
 
-        Returns deduplicated list of:
-          {"type": "tool_call", "tool_call_id": "...", "name": "...", "arguments": {...}}
-        """
+    def to_tool_calls_format(self) -> List[Dict[str, Any]]:
+        """Convert trace tool calls to the format expected by ToolCallAccuracyEvaluator."""
         result = []
         seen_ids: set = set()
         for tc in self.tool_calls:
@@ -276,16 +341,9 @@ class AgentTrace:
             seen_ids.add(tc_id)
             args = tc.get("arguments", {})
             if isinstance(args, str):
-                try:
-                    args = json.loads(args)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-            result.append({
-                "type": "tool_call",
-                "tool_call_id": tc_id,
-                "name": tc.get("name", ""),
-                "arguments": args,
-            })
+                try: args = json.loads(args)
+                except: pass
+            result.append({"type": "tool_call", "tool_call_id": tc_id, "name": tc.get("name", ""), "arguments": args})
         return result
 
 
@@ -383,12 +441,20 @@ class OTelTraceCapture:
             logger.debug("opentelemetry-instrumentation-openai-v2 not installed — "
                          "only manual spans will be captured")
 
-        # Set env var for content capture
+        # Enable MAF (Microsoft Agent Framework) instrumentation if available
+        # MAF emits full OTel traces (spans, messages, tool calls, tool definitions)
+        # to the global providers — which we just set up above.
+        try:
+            from agent_framework.observability import enable_instrumentation
+            enable_instrumentation(enable_sensitive_data=True)
+            logger.info("OTel trace capture: MAF instrumentation enabled")
+        except ImportError:
+            pass  # MAF not installed
+
+        # Content capture env vars
         if self._capture_content:
             import os
-            os.environ.setdefault(
-                "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "true"
-            )
+            os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "true")
 
         self._tracer = otel_trace.get_tracer("azure.ai.evaluation.engine")
         self._setup_done = True

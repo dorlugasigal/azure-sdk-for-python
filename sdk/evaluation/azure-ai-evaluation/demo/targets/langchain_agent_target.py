@@ -1,11 +1,10 @@
 """LangChain agent evaluation target.
 
-Demonstrates the simplified agent target pattern: the user writes normal
-LangChain agent code and returns just {"answer": text}. The engine's OTel
-tracing auto-captures all tool calls, messages, and token usage — evaluators
-get the full structured data without the user manually building it.
+Demonstrates the simplified agent target pattern using LangGraph's
+create_react_agent — the proper way to build LangChain agents.
+The user just returns {"answer": text}, engine handles the rest via OTel.
 
-Install: pip install langchain langchain-openai azure-identity
+Install: pip install langchain-openai langgraph azure-identity
 """
 from __future__ import annotations
 
@@ -39,10 +38,10 @@ AZURE_ENDPOINT = "https://foundry-evee-ko9z2s7c.cognitiveservices.azure.com/"
 
 @target(name="weather_agent_langchain")
 class WeatherAgentLangChainTarget(BaseTarget):
-    """LangChain agent with tools for weather queries.
+    """LangChain agent using create_react_agent — the standard pattern.
 
-    The user writes normal LangChain code — the engine auto-captures
-    all LLM calls and tool invocations via OTel tracing.
+    The agent handles the full tool execution loop automatically.
+    OTel captures all LLM calls via the OpenAI instrumentor.
     """
 
     def __init__(self, **kwargs: Any) -> None:
@@ -50,16 +49,17 @@ class WeatherAgentLangChainTarget(BaseTarget):
 
         from langchain_openai import AzureChatOpenAI
         from langchain_core.tools import tool as langchain_tool
+        from langgraph.prebuilt import create_react_agent
         from azure.identity import AzureCliCredential, get_bearer_token_provider
 
         token_provider = get_bearer_token_provider(
             AzureCliCredential(), "https://cognitiveservices.azure.com/.default"
         )
 
-        self._llm = AzureChatOpenAI(
+        model = AzureChatOpenAI(
             azure_endpoint=AZURE_ENDPOINT,
             azure_deployment="gpt-4.1-mini",
-            model="gpt-4.1-mini",  # Required for OTel instrumentation compatibility
+            model="gpt-4.1-mini",
             azure_ad_token_provider=token_provider,
             api_version="2025-04-01-preview",
         )
@@ -74,43 +74,14 @@ class WeatherAgentLangChainTarget(BaseTarget):
             """Decide whether to bring an umbrella based on the weather condition."""
             return bring_umbrella(weather_condition)
 
-        self._tools = [lc_get_weather, lc_bring_umbrella]
-        self._llm_with_tools = self._llm.bind_tools(self._tools)
-        self._tool_map = {t.name: t for t in self._tools}
+        self._agent = create_react_agent(model, tools=[lc_get_weather, lc_bring_umbrella])
 
     def infer(self, input: Dict[str, Any]) -> Dict[str, Any]:
-        """Run the LangChain agent and return just the answer.
-
-        The engine's OTel tracing automatically captures all LLM calls,
-        tool invocations, and messages — no manual tracking needed.
-        output_items, tool_calls, and tool_definitions are auto-enriched.
-        """
-        from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
-
+        """Run the LangChain agent and return just the answer."""
         query = input.get("query") or input.get("question") or input.get("prompt") or str(list(input.values())[0])
 
-        messages = [
-            SystemMessage(content="You are a helpful weather assistant. Use tools to answer. Be concise."),
-            HumanMessage(content=query),
-        ]
+        result = self._agent.invoke({"messages": [("user", query)]})
 
-        # Standard LangChain tool execution loop
-        for _ in range(5):
-            response = self._llm_with_tools.invoke(messages)
-            messages.append(response)
+        final = result["messages"][-1].content if hasattr(result["messages"][-1], "content") else str(result["messages"][-1])
 
-            if not response.tool_calls:
-                break
-
-            for tc in response.tool_calls:
-                tool = self._tool_map.get(tc["name"])
-                result = tool.invoke(tc["args"]) if tool else f"Unknown tool: {tc['name']}"
-                messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
-        else:
-            # If loop exhausted, get final response
-            response = self._llm_with_tools.invoke(messages)
-            messages.append(response)
-
-        # Just return the answer — engine auto-enriches with trace data
-        return {"answer": response.content or ""}
-
+        return {"answer": final or ""}

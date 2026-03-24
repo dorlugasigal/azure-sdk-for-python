@@ -30,10 +30,10 @@ from .tracking import (
 
 
 def _extract_tool_definitions_from_trace(agent_trace) -> list:
-    """Extract tool definitions from OTel trace spans if available.
+    """Extract tool definitions from OTel trace spans.
 
-    The OpenAI instrumentation captures tool definitions in the
-    gen_ai.tool.definitions span attribute when available.
+    MAF emits gen_ai.tool.definitions on the invoke_agent span.
+    The OpenAI instrumentor will emit it once PR #3378 lands.
     """
     for span in agent_trace.spans:
         tool_defs = span.attributes.get("gen_ai.tool.definitions")
@@ -41,188 +41,27 @@ def _extract_tool_definitions_from_trace(agent_trace) -> list:
             import json
             if isinstance(tool_defs, str):
                 try:
-                    return json.loads(tool_defs)
+                    parsed = json.loads(tool_defs)
                 except (json.JSONDecodeError, ValueError):
-                    pass
-            elif isinstance(tool_defs, (list, tuple)):
-                return list(tool_defs)
-    return []
-
-
-def _normalize_output_items(items: list) -> list:
-    """Normalize output_items from any framework to the OpenAI message schema.
-
-    SDK evaluators expect:
-      - content (not contents)
-      - tool_call (not function_call)
-      - tool_result (not function_result)
-
-    This handles MAF format, OpenAI format, LangChain format.
-    """
-    import json as _json
-    normalized = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        role = item.get("role", "")
-        # MAF uses "contents", OpenAI uses "content"
-        raw_content = item.get("content") or item.get("contents")
-
-        if role == "assistant":
-            new_content = []
-            if isinstance(raw_content, list):
-                for c in raw_content:
-                    if not isinstance(c, dict):
-                        new_content.append({"type": "text", "text": str(c)})
-                        continue
-                    ctype = c.get("type", "")
-                    if ctype in ("function_call", "tool_call"):
-                        args = c.get("arguments", {})
-                        if isinstance(args, str):
-                            try:
-                                args = _json.loads(args)
-                            except (ValueError, _json.JSONDecodeError):
-                                pass
-                        new_content.append({
-                            "type": "tool_call",
-                            "tool_call_id": c.get("tool_call_id") or c.get("call_id", ""),
-                            "name": c.get("name", ""),
-                            "arguments": args,
-                        })
-                    elif ctype == "text":
-                        new_content.append({"type": "text", "text": c.get("text", "")})
-                    else:
-                        new_content.append(c)
-            elif isinstance(raw_content, str) and raw_content:
-                new_content = [{"type": "text", "text": raw_content}]
-
-            # Handle LangChain-style tool_calls at message level
-            if "tool_calls" in item and isinstance(item["tool_calls"], list):
-                for tc in item["tool_calls"]:
-                    if isinstance(tc, dict):
-                        args = tc.get("arguments") or tc.get("args", {})
-                        if isinstance(args, str):
-                            try:
-                                args = _json.loads(args)
-                            except (ValueError, _json.JSONDecodeError):
-                                pass
-                        new_content.append({
-                            "type": "tool_call",
-                            "tool_call_id": tc.get("tool_call_id") or tc.get("id") or tc.get("call_id", ""),
-                            "name": tc.get("name", ""),
-                            "arguments": args,
-                        })
-
-            if new_content:
-                normalized.append({"role": "assistant", "content": new_content})
-
-        elif role == "tool":
-            if isinstance(raw_content, list):
-                new_content = []
-                for c in raw_content:
-                    if isinstance(c, dict) and c.get("type") in ("function_result", "tool_result"):
-                        call_id = c.get("tool_call_id") or c.get("call_id", "")
-                        result_val = c.get("tool_result") or c.get("result", "")
-                        new_content.append({
-                            "type": "tool_result",
-                            "tool_call_id": call_id,
-                            "tool_result": str(result_val),
-                        })
-                    else:
-                        new_content.append(c)
-                tool_call_id = item.get("tool_call_id", "")
-                if not tool_call_id and raw_content and isinstance(raw_content[0], dict):
-                    tool_call_id = raw_content[0].get("call_id", "")
-                normalized.append({"role": "tool", "tool_call_id": tool_call_id, "content": new_content})
-            elif isinstance(raw_content, str):
-                normalized.append({
-                    "role": "tool",
-                    "tool_call_id": item.get("tool_call_id", ""),
-                    "content": [{"type": "tool_result", "tool_call_id": item.get("tool_call_id", ""), "tool_result": raw_content}],
-                })
-        else:
-            normalized.append(item)
-
-    return normalized
-
-
-def _normalize_tool_definitions(tool_defs: list) -> list:
-    """Normalize tool definitions to the flat format SDK evaluators expect.
-
-    Evaluators expect: {"name": "...", "type": "function", "description": "...", "parameters": {...}}
-    
-    Handles:
-    - Raw Python functions (with annotations/docstrings)
-    - MAF FunctionTool objects (have .to_json_schema_spec())
-    - LangChain tools (have .name, .description, .args_schema)
-    - OpenAI nested format: {"type": "function", "function": {"name": ...}} → flattened
-    - Already-flat dicts (pass through)
-    """
-    normalized = []
-    for tool in tool_defs:
-        if isinstance(tool, dict):
-            normalized.append(_flatten_tool_def(tool))
-        elif hasattr(tool, "to_json_schema_spec"):
-            # MAF FunctionTool
-            normalized.append(_flatten_tool_def(tool.to_json_schema_spec()))
-        elif hasattr(tool, "args_schema") and hasattr(tool, "name"):
-            # LangChain tool
-            schema = {}
-            if tool.args_schema:
-                try:
-                    schema = tool.args_schema.model_json_schema()
-                except Exception:
-                    pass
-            normalized.append({
-                "name": tool.name,
-                "type": "function",
-                "description": getattr(tool, "description", ""),
-                "parameters": schema,
-            })
-        elif callable(tool):
-            # Raw Python function — extract from signature + docstring
-            import inspect
-            sig = inspect.signature(tool)
-            props = {}
-            required = []
-            for pname, param in sig.parameters.items():
-                if pname == "self":
                     continue
-                prop = {"type": "string"}
-                annotation = param.annotation
-                if annotation != inspect.Parameter.empty:
-                    ann_str = str(annotation)
-                    if "int" in ann_str:
-                        prop["type"] = "integer"
-                    elif "float" in ann_str:
-                        prop["type"] = "number"
-                    elif "bool" in ann_str:
-                        prop["type"] = "boolean"
-                if param.default is inspect.Parameter.empty:
-                    required.append(pname)
-                props[pname] = prop
-            normalized.append({
-                "name": getattr(tool, "__name__", "unknown"),
-                "type": "function",
-                "description": getattr(tool, "__doc__", "") or "",
-                "parameters": {"type": "object", "properties": props, "required": required},
-            })
-        else:
-            normalized.append({"name": str(tool), "type": "function"})
-    return normalized
+            elif isinstance(tool_defs, (list, tuple)):
+                parsed = list(tool_defs)
+            else:
+                continue
 
-
-def _flatten_tool_def(d: dict) -> dict:
-    """Flatten nested OpenAI format to flat format for evaluators.
-    
-    {"type": "function", "function": {"name": "x", ...}} → {"name": "x", "type": "function", ...}
-    """
-    if "function" in d and isinstance(d["function"], dict) and "name" in d["function"]:
-        flat = {"type": d.get("type", "function")}
-        flat.update(d["function"])
-        return flat
-    return d
-    return normalized
+            # Flatten nested OpenAI format if needed
+            # {"type": "function", "function": {"name": ...}} → {"name": ..., "type": "function", ...}
+            result = []
+            for td in parsed:
+                if isinstance(td, dict) and "function" in td and isinstance(td["function"], dict):
+                    flat = {"type": td.get("type", "function")}
+                    flat.update(td["function"])
+                    result.append(flat)
+                elif isinstance(td, dict):
+                    result.append(td)
+            if result:
+                return result
+    return []
 
 
 class ModelEvaluator:
@@ -675,6 +514,23 @@ class ModelEvaluator:
 
     def _register_evaluators(self) -> None:
         """Register evaluators from configuration."""
+        # Ensure all SDK evaluators with evee integration blocks are imported
+        # so their @evaluator decorators register them in EVALUATOR_REGISTRY.
+        try:
+            from azure.ai.evaluation._evaluators._coherence._coherence import CoherenceEvaluator  # noqa: F401
+            from azure.ai.evaluation._evaluators._f1_score._f1_score import F1ScoreEvaluator  # noqa: F401
+            from azure.ai.evaluation._evaluators._relevance._relevance import RelevanceEvaluator  # noqa: F401
+            from azure.ai.evaluation._evaluators._task_adherence._task_adherence import TaskAdherenceEvaluator  # noqa: F401
+            from azure.ai.evaluation._evaluators._intent_resolution._intent_resolution import IntentResolutionEvaluator  # noqa: F401
+            from azure.ai.evaluation._evaluators._tool_call_accuracy._tool_call_accuracy import ToolCallAccuracyEvaluator  # noqa: F401
+            from azure.ai.evaluation._evaluators._tool_call_success._tool_call_success import _ToolCallSuccessEvaluator  # noqa: F401
+            from azure.ai.evaluation._evaluators._tool_selection._tool_selection import _ToolSelectionEvaluator  # noqa: F401
+            from azure.ai.evaluation._evaluators._tool_input_accuracy._tool_input_accuracy import _ToolInputAccuracyEvaluator  # noqa: F401
+            from azure.ai.evaluation._evaluators._tool_output_utilization._tool_output_utilization import _ToolOutputUtilizationEvaluator  # noqa: F401
+            from azure.ai.evaluation._evaluators._task_completion._task_completion import _TaskCompletionEvaluator  # noqa: F401
+        except ImportError:
+            pass  # Some evaluators may not be available
+
         for evaluator_cfg in self.config.experiment.evaluators:
             evaluator_dict = evaluator_cfg.model_dump()
             evaluator_name = evaluator_dict["name"]
@@ -1048,16 +904,14 @@ class ModelEvaluator:
 
             response_time_ms = (time.perf_counter() - start_time) * 1000
 
-            # Auto-enrich output with trace data if available.
-            # Users just return {"answer": "text"} and the engine automatically
-            # adds output_items, tool_calls, tool_definitions from the OTel trace.
+            # Auto-enrich output from OTel traces.
+            # Targets just return {"answer": text} — everything else comes from traces.
             if isinstance(model_output, dict):
                 has_trace_data = (
                     agent_trace is not None
                     and (agent_trace.llm_calls or agent_trace.log_events)
                 )
                 if has_trace_data:
-                    # Rich trace available — use it for full structured data
                     if "output_items" not in model_output:
                         model_output["output_items"] = agent_trace.to_conversation_format()
                     if "tool_calls" not in model_output:
@@ -1066,24 +920,33 @@ class ModelEvaluator:
                         tool_defs = _extract_tool_definitions_from_trace(agent_trace)
                         if tool_defs:
                             model_output["tool_definitions"] = tool_defs
-                elif "output_items" not in model_output and "answer" in model_output:
-                    # No trace data and no output_items — create minimal conversation
-                    # from answer text so agent evaluators don't get empty responses
-                    answer = model_output["answer"]
+
+                # Fallback: minimal output_items from answer text
+                if "output_items" not in model_output and "answer" in model_output:
                     model_output["output_items"] = [
-                        {"role": "assistant", "content": [{"type": "text", "text": str(answer)}]}
+                        {"role": "assistant", "content": [{"type": "text", "text": str(model_output["answer"])}]}
                     ]
 
-                # Normalize output_items to OpenAI schema regardless of source
-                # (handles MAF contents/function_call → content/tool_call conversion)
+                # Prepend user query for evaluator conversation parser
                 if "output_items" in model_output:
-                    model_output["output_items"] = _normalize_output_items(model_output["output_items"])
+                    items = model_output["output_items"]
+                    if items and items[0].get("role") != "user":
+                        query_text = record.get("query") or record.get("question") or record.get("prompt") or ""
+                        if query_text:
+                            items.insert(0, {"role": "user", "content": str(query_text)})
 
-                # Normalize tool_definitions if they're raw function/FunctionTool objects
-                if "tool_definitions" in model_output:
-                    model_output["tool_definitions"] = _normalize_tool_definitions(
-                        model_output["tool_definitions"]
-                    )
+                    # Ensure the final text answer is in output_items
+                    # (OTel may miss the last response due to timing)
+                    answer = model_output.get("answer", "")
+                    if answer and items:
+                        last = items[-1]
+                        last_has_text = (
+                            last.get("role") == "assistant"
+                            and isinstance(last.get("content"), list)
+                            and any(isinstance(c, dict) and c.get("type") == "text" for c in last["content"])
+                        )
+                        if not last_has_text:
+                            items.append({"role": "assistant", "content": [{"type": "text", "text": str(answer)}]})
 
             # Create inference output — attach trace data if captured
             inference_output = InferenceOutput(
@@ -1098,8 +961,8 @@ class ModelEvaluator:
                 try:
                     evaluator_result = evaluator_instance.compute(inference_output)
                     evaluators[evaluator_name] = evaluator_result
-                except Exception:
-                    evaluators[evaluator_name] = {"error": "computation_failed"}
+                except Exception as eval_err:
+                    evaluators[evaluator_name] = {"error": f"computation_failed: {eval_err}"}
 
             # Emit OTel evaluation result events for each evaluator score
             if agent_trace is not None and self._trace_capture is not None:
