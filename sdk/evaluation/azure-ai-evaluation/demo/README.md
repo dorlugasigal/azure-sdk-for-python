@@ -125,20 +125,19 @@ local-evals run -c demo/context7_agent_eval/eval_config.yaml --remote
 **Config:** [`context7_agent_eval/eval_config.yaml`](context7_agent_eval/eval_config.yaml) — a documentation assistant connected to a [Context7](https://context7.com) MCP server, evaluated with `coherence`, `relevance`, `task_adherence`, `intent_resolution`.
 
 ```yaml
+compute:
+  type: "foundry"
+  azure_ai_project: "https://....services.ai.azure.com/api/projects/..."
+
 targets:
   - name: "context7-docs-agent"
     type: "azure_ai_agent"        # No target code needed
     agent_name: "context7-docs-agent"
-    connection_name: "default"    # Resolves project from connections block
-
-connections:
-  default:
-    azure_endpoint: "https://..."
-    azure_deployment: "gpt-4.1"
-    azure_ai_project: "https://....services.ai.azure.com/api/projects/..."
 ```
 
-The agent must be published in the Foundry project (visible in the portal under **Agents**). The `connection_name` resolves the project endpoint from the shared `connections` block — same pattern used by `azure_ai_model` and custom targets.
+With `--remote`, the agent name is all that's needed — Foundry resolves the agent within the project specified in `compute.azure_ai_project`. For local execution, the agent target resolves the project endpoint from `connection_name` → `connections` (same pattern as other targets).
+
+The agent must be published in the Foundry project (visible in the portal under **Agents**).
 
 ---
 
