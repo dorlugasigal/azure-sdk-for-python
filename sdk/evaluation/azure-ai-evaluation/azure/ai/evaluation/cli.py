@@ -882,44 +882,56 @@ def view(port, no_browser):
 
     # Resolve output directory
     if not os.path.isdir(output_dir):
-        _echo_error(
-            f"No output directory found at '{output_dir}'.\n"
-            "Run an experiment first with 'local-evals run'."
-        )
-        sys.exit(1)
+        os.makedirs(output_dir, exist_ok=True)
     experiments = _find_experiments(output_dir)
     if not experiments:
-        _echo_error(
-            f"No experiment results found in '{output_dir}'.\n"
-            "Run an experiment first with 'local-evals run'."
-        )
-        sys.exit(1)
-    output_path = str(experiments[0])
+        # No experiments yet — launch UI with empty data to show empty state
+        results_data = {
+            "experiment_name": "",
+            "output_path": "",
+            "models": [],
+            "summary": {},
+            "records": [],
+        }
+        output_path = output_dir
+    else:
+        output_path = str(experiments[0])
 
-    try:
-        results_data = _load_results(output_path)
-    except Exception as e:
-        _echo_error(f"Failed to load results: {e}")
-        sys.exit(1)
+    if experiments:
+        try:
+            results_data = _load_results(output_path)
+        except Exception as e:
+            _echo_error(f"Failed to load results: {e}")
+            sys.exit(1)
 
-    # Load the viewer HTML
+    # Load the viewer HTML template
     viewer_html_path = Path(__file__).parent / "_engine" / "ui" / "results_viewer.html"
     if not viewer_html_path.exists():
         _echo_error("Results viewer UI not found. The UI component may not be installed.")
         sys.exit(1)
 
-    html = viewer_html_path.read_text()
+    html_template = viewer_html_path.read_text()
 
-    # Inject results data
-    safe_json = json.dumps(results_data).replace("</", "<\\/")
-    safe_dir = json.dumps(output_dir).replace("</", "<\\/")
-    inject_script = (
-        "<script>\n"
-        f"        window.__EVEE_RESULTS_DATA__ = {safe_json};\n"
-        f"        window.__EVEE_OUTPUT_DIR__ = {safe_dir};\n"
-        "    </script>"
-    )
-    html = html.replace("</head>", f"{inject_script}</head>")
+    def _build_html():
+        """Re-read data from disk and inject into HTML on every request."""
+        current_experiments = _find_experiments(output_dir)
+        if current_experiments:
+            try:
+                current_data = _load_results(str(current_experiments[0]))
+            except Exception:
+                current_data = {"experiment_name": "", "output_path": "", "models": [], "summary": {}, "records": []}
+        else:
+            current_data = {"experiment_name": "", "output_path": "", "models": [], "summary": {}, "records": []}
+
+        safe_json = json.dumps(current_data).replace("</", "<\\/")
+        safe_dir = json.dumps(output_dir).replace("</", "<\\/")
+        inject_script = (
+            "<script>\n"
+            f"        window.__EVEE_RESULTS_DATA__ = {safe_json};\n"
+            f"        window.__EVEE_OUTPUT_DIR__ = {safe_dir};\n"
+            "    </script>"
+        )
+        return html_template.replace("</head>", f"{inject_script}</head>")
 
     class _ViewerHandler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
@@ -927,7 +939,7 @@ def view(port, no_browser):
                 self.send_response(200)
                 self.send_header("Content-type", "text/html")
                 self.end_headers()
-                self.wfile.write(html.encode())
+                self.wfile.write(_build_html().encode())
             elif self.path == "/api/experiments":
                 experiments = _find_experiments(output_dir)
                 data = []
@@ -989,6 +1001,7 @@ def view(port, no_browser):
             pass  # Suppress request logs
 
     try:
+        socketserver.TCPServer.allow_reuse_address = True
         with socketserver.TCPServer(("127.0.0.1", port), _ViewerHandler) as httpd:
             url = f"http://localhost:{port}"
             if _HAS_RICH:
@@ -1006,9 +1019,11 @@ def view(port, no_browser):
                     _console.print("\n[yellow]Stopping server...[/yellow]")
                 else:
                     click.echo("\nStopping server...")
-                threading.Thread(target=httpd.shutdown).start()
+                httpd.shutdown()
+                httpd.server_close()
 
             signal.signal(signal.SIGINT, _shutdown)
+            signal.signal(signal.SIGTERM, _shutdown)
             httpd.serve_forever()
     except OSError as e:
         if "Address already in use" in str(e):

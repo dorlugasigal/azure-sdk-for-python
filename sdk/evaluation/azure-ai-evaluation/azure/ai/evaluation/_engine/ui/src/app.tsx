@@ -213,14 +213,14 @@ const styles = {
     padding: "6px 12px",
     textAlign: "left" as const,
     borderBottom: "1px solid var(--color-border)",
-    background: "var(--color-background-secondary)",
+    background: "#141414",
     fontWeight: 600,
     fontSize: "12px",
     whiteSpace: "nowrap" as const,
     position: "sticky" as const,
     top: 0,
     zIndex: 1,
-    color: "var(--color-text-secondary)",
+    color: "#FFFFFF",
     fontFamily: "var(--font-sans)",
     textTransform: "lowercase" as const,
   } as CSSProperties,
@@ -510,7 +510,7 @@ const styles = {
     padding: "8px 12px",
     borderRadius: "6px",
     border: "1px solid var(--color-border)",
-    background: "var(--color-background-secondary)",
+    background: "#141414",
     color: "var(--color-text-primary)",
     fontSize: "14px",
     minWidth: "200px",
@@ -1341,14 +1341,35 @@ interface ComparisonTableProps {
 }
 
 function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
-  const models = data.models || [
-    {
-      model_name: data.summary.run_id,
-      summary: data.summary,
-      records: data.records,
-      files: { summary: "", records: null },
-    },
-  ];
+  const models = Array.isArray(data.models) && data.models.length > 0
+    ? data.models
+    : data.summary && data.records
+      ? [{
+          model_name: data.summary.run_id,
+          summary: data.summary,
+          records: data.records,
+          files: { summary: "", records: null },
+        }]
+      : [];
+
+  // Empty state: no models at all
+  if (models.length === 0) {
+    return (
+      <div>
+        <div style={styles.header}>
+          <div style={styles.headerTop}>
+            <div>
+              <h1 style={styles.title}>Evaluation runs</h1>
+              <p style={styles.subtitle}>No evaluation results yet. Run an evaluation to see results here.</p>
+            </div>
+            {onRefresh && (
+              <button style={styles.button} onClick={onRefresh}>{"↻ Refresh"}</button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const [baselineIndex, setBaselineIndex] = useState<number | null>(null);
   const [drillDownModel, setDrillDownModel] = useState<ModelData | null>(null);
@@ -1425,7 +1446,7 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
               whiteSpace: "nowrap",
               maxWidth: "100%",
             }}>
-              {data.output_path.split("/").pop()}
+              {(data.output_path || "").split("/").pop()}
             </p>
           </div>
           <div style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}>
@@ -1440,7 +1461,7 @@ function ComparisonTable({ data, onRefresh }: ComparisonTableProps) {
         {/* Show "Open in Browser" hint only when running in MCP (not standalone CLI) */}
         {onRefresh && !window.__EVEE_RESULTS_DATA__ && (() => {
           const relativePath = (() => {
-            const p = data.output_path;
+            const p = data.output_path || "";
             const expIdx = p.indexOf("experiment/");
             return expIdx !== -1 ? p.substring(expIdx) : p.split("/").slice(-3).join("/");
           })();
@@ -1851,6 +1872,7 @@ interface ExperimentListItem {
   num_runs?: number;
   created?: number;
   evaluators?: string[];
+  dataset?: string;
   status?: string;
 }
 
@@ -1859,16 +1881,21 @@ interface ExperimentListItem {
 function ExperimentsOverview({
   experiments,
   onSelect,
+  onViewDataset,
 }: {
   experiments: ExperimentListItem[];
   onSelect: (name: string) => void;
+  onViewDataset: (experimentName: string) => void;
 }) {
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return experiments;
-    const q = search.toLowerCase();
-    return experiments.filter((e) => e.name.toLowerCase().includes(q));
+    const list = search.trim()
+      ? experiments.filter((e) => e.name.toLowerCase().includes(search.toLowerCase()))
+      : [...experiments];
+    // Sort by creation date descending (newest first)
+    list.sort((a, b) => (b.created ?? 0) - (a.created ?? 0));
+    return list;
   }, [experiments, search]);
 
   return (
@@ -1897,7 +1924,7 @@ function ExperimentsOverview({
               flex: "unset",
               width: "100%",
               paddingLeft: "36px",
-              background: "var(--color-background-secondary)",
+              background: "#141414",
             }}
           />
         </div>
@@ -1908,11 +1935,12 @@ function ExperimentsOverview({
         <table style={styles.table}>
           <thead>
             <tr>
-              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600 }}>Name</th>
-              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600 }}>Runs</th>
-              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600 }}>Status</th>
-              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600 }}>Created</th>
-              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600 }}>Evaluators</th>
+              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600, color: "#FFFFFF" }}>Name</th>
+              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600, color: "#FFFFFF" }}>Dataset</th>
+              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600, color: "#FFFFFF" }}>Runs</th>
+              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600, color: "#FFFFFF" }}>Status</th>
+              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600, color: "#FFFFFF" }}>Created</th>
+              <th style={{ ...styles.th, textTransform: "none" as const, fontWeight: 600, color: "#FFFFFF" }}>Evaluators</th>
             </tr>
           </thead>
           <tbody>
@@ -1931,7 +1959,30 @@ function ExperimentsOverview({
                 <td style={{ ...styles.td, textAlign: "left", color: "var(--color-accent)", fontWeight: 500, fontFamily: "var(--font-sans)", padding: "8px 12px" }}>
                   {exp.name}
                 </td>
-                <td style={{ ...styles.td, textAlign: "center", fontFamily: "var(--font-sans)", padding: "8px 12px" }}>
+                <td
+                  style={{ ...styles.td, textAlign: "left", fontFamily: "var(--font-sans)", padding: "8px 12px" }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onViewDataset(exp.name);
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "var(--color-accent)",
+                      cursor: "pointer",
+                      fontWeight: 500,
+                      textDecoration: "underline",
+                      textDecorationColor: "transparent",
+                      transition: "text-decoration-color 0.15s",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLSpanElement).style.textDecorationColor = "var(--color-accent)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLSpanElement).style.textDecorationColor = "transparent"; }}
+                    title={exp.dataset || exp.name}
+                  >
+                    {exp.dataset || exp.name}
+                  </span>
+                </td>
+                <td style={{ ...styles.td, textAlign: "center", color: "#FFFFFF", fontFamily: "var(--font-sans)", padding: "8px 12px" }}>
                   {exp.num_runs ?? "—"}
                 </td>
                 <td style={{ ...styles.td, textAlign: "left", fontFamily: "var(--font-sans)", padding: "8px 12px" }}>
@@ -1940,7 +1991,7 @@ function ExperimentsOverview({
                     <span>{exp.status ?? "Completed"}</span>
                   </span>
                 </td>
-                <td style={{ ...styles.td, textAlign: "left", color: "var(--color-text-secondary)", fontFamily: "var(--font-sans)", padding: "8px 12px" }}>
+                <td style={{ ...styles.td, textAlign: "left", color: "#FFFFFF", fontFamily: "var(--font-sans)", padding: "8px 12px" }}>
                   {exp.created ? new Date(exp.created * 1000).toLocaleString() : "—"}
                 </td>
                 <td style={{ ...styles.td, textAlign: "left", fontFamily: "var(--font-sans)", padding: "8px 12px" }}>
@@ -1990,10 +2041,91 @@ function ExperimentDetail({
   onBack?: () => void;
   onCompare: () => void;
 }) {
-  const models = data.models || [];
-  const experimentName = data.output_path.split("/").pop() || "";
+  const models = Array.isArray(data.models) ? data.models : [];
+  const experimentName = (data.output_path || "").split("/").pop() || "Experiment";
   const [drillDownModel, setDrillDownModel] = useState<ModelData | null>(null);
   const [showRunsRaw, setShowRunsRaw] = useState(false);
+  const [datasetExpanded, setDatasetExpanded] = useState(false);
+  const [datasetPage, setDatasetPage] = useState(1);
+  const [datasetPageSize, setDatasetPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  // Collect unique dataset records (deduplicate across models using first model's records)
+  const datasetRecords = useMemo(() => {
+    if (models.length === 0) return [];
+    return models[0].records.map((r) => r.record);
+  }, [models]);
+
+  const datasetColumns = useMemo(() => {
+    const keys = new Set<string>();
+    for (const rec of datasetRecords) {
+      for (const k of Object.keys(rec)) keys.add(k);
+    }
+    return Array.from(keys);
+  }, [datasetRecords]);
+
+  const datasetTotalPages = Math.ceil(datasetRecords.length / datasetPageSize);
+  const paginatedDatasetRecords = useMemo(() => {
+    const start = (datasetPage - 1) * datasetPageSize;
+    return datasetRecords.slice(start, start + datasetPageSize);
+  }, [datasetRecords, datasetPage, datasetPageSize]);
+
+  useEffect(() => {
+    setDatasetPage(1);
+  }, [datasetPageSize]);
+
+  // Dataset name from the output path
+  const datasetName = useMemo(() => {
+    const path = data.output_path || "";
+    const parts = path.split("/");
+    return parts.length > 1 ? parts[parts.length - 2] : parts[0] || "Dataset";
+  }, [data.output_path]);
+
+  // Empty state: no models/runs
+  if (models.length === 0) {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
+          {onBack && (
+            <button
+              onClick={onBack}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--color-text-primary)",
+                cursor: "pointer",
+                fontSize: "20px",
+                padding: "12px",
+                lineHeight: 1,
+                minWidth: "44px",
+                minHeight: "44px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              ←
+            </button>
+          )}
+          <h1 style={{ fontSize: "18px", fontWeight: 600, margin: 0 }}>{experimentName}</h1>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "60px 20px",
+            gap: "16px",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: "14px", color: "var(--color-text-muted, var(--color-text-secondary))" }}>
+            No evaluation results yet. Run an evaluation to see results here.
+          </div>
+        </div>
+      </div>
+    );
+  }
   const allMetricKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const model of models) {
@@ -2178,25 +2310,26 @@ function ExperimentDetail({
                 {allMetricKeys.map((k) => {
                   const display = formatEvaluatorAsPassRate(model, k);
                   return (
-                    <td key={k} style={{ ...styles.td, textAlign: "right", padding: "4px 6px" }}>
+                    <td key={k} style={{ ...styles.td, textAlign: "left", padding: "4px 6px" }}>
                       {display ? (
                         <div style={{
                           background: display.allPassed
-                            ? "rgba(16, 185, 129, 0.15)"
+                            ? "#20291F"
                             : "rgba(209, 52, 56, 0.15)",
                           borderRadius: "6px",
-                          padding: "6px 10px",
-                          minWidth: "80px",
+                          padding: "4px 12px",
+                          minWidth: "70px",
                         }}>
-                          <div style={{ color: "var(--color-text-primary)", fontWeight: 600, fontSize: "15px", textAlign: "right" }}>{display.pct}</div>
+                          <div style={{ color: "#FFFFFF", fontWeight: 600, fontSize: "14px", textAlign: "left", lineHeight: "1.2" }}>{display.pct}</div>
                           {display.detail && (
                             <div style={{
                               fontSize: "12px",
                               color: display.allPassed
                                 ? "var(--color-success, #a0d89f)"
                                 : "var(--color-error, #e74856)",
-                              marginTop: "2px",
-                              textAlign: "right",
+                              marginTop: "0px",
+                              textAlign: "left",
+                              lineHeight: "1.2",
                             }}>
                               {display.detail}
                             </div>
@@ -2242,10 +2375,314 @@ function ExperimentDetail({
         </div>
       )}
 
+      {/* Dataset section */}
+      {datasetRecords.length > 0 && (
+        <div style={{ marginTop: "32px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <div>
+              <h2 style={{ fontSize: "16px", fontWeight: 600, margin: "0 0 4px" }}>Dataset</h2>
+              <p style={{ fontSize: "13px", color: "var(--color-text-muted, var(--color-text-secondary))", margin: 0 }}>
+                {datasetName} · {datasetRecords.length} record{datasetRecords.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+            <button
+              onClick={() => setDatasetExpanded(!datasetExpanded)}
+              style={{
+                ...styles.buttonSmall,
+                ...(datasetExpanded ? styles.buttonSmallActive : {}),
+              }}
+            >
+              {datasetExpanded ? "Hide Dataset" : "View Dataset"}
+            </button>
+          </div>
+
+          {datasetExpanded && (
+            <>
+              <div style={styles.tableWrapper}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...styles.th, textTransform: "none" as const, textAlign: "center" as const, width: "50px" }}>#</th>
+                      {datasetColumns.map((col) => (
+                        <th key={col} style={{ ...styles.th, textTransform: "none" as const, textAlign: "left" as const }}>
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedDatasetRecords.map((rec, idx) => {
+                      const globalIdx = (datasetPage - 1) * datasetPageSize + idx;
+                      return (
+                        <tr key={globalIdx}>
+                          <td style={{ ...styles.td, textAlign: "center", color: "var(--color-text-muted, var(--color-text-secondary))", fontSize: "12px" }}>
+                            {globalIdx + 1}
+                          </td>
+                          {datasetColumns.map((col) => {
+                            const val = rec[col];
+                            const displayVal = val == null ? "—" : typeof val === "object" ? JSON.stringify(val) : String(val);
+                            return (
+                              <td
+                                key={col}
+                                title={displayVal}
+                                style={{
+                                  ...styles.td,
+                                  textAlign: "left",
+                                  fontFamily: "var(--font-sans)",
+                                  maxWidth: "300px",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {displayVal}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Dataset pagination */}
+              {datasetTotalPages > 1 && (
+                <div style={{ ...styles.pagination, padding: "12px 0" }}>
+                  <button
+                    style={{ ...styles.pageButton, ...(datasetPage === 1 ? styles.pageButtonDisabled : {}) }}
+                    onClick={() => setDatasetPage((p) => Math.max(1, p - 1))}
+                    disabled={datasetPage === 1}
+                  >
+                    ‹ Prev
+                  </button>
+                  <span style={styles.pageInfo}>Page {datasetPage} of {datasetTotalPages}</span>
+                  <select
+                    value={datasetPageSize}
+                    onChange={(e) => setDatasetPageSize(Number(e.target.value))}
+                    style={styles.pageSizeSelect}
+                  >
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <option key={size} value={size}>{size} / page</option>
+                    ))}
+                  </select>
+                  <button
+                    style={{ ...styles.pageButton, ...(datasetPage === datasetTotalPages ? styles.pageButtonDisabled : {}) }}
+                    onClick={() => setDatasetPage((p) => Math.min(datasetTotalPages, p + 1))}
+                    disabled={datasetPage === datasetTotalPages}
+                  >
+                    Next ›
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Prev/Next */}
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px", marginTop: "16px", fontSize: "13px", color: "var(--color-text-muted, var(--color-text-secondary))" }}>
         ‹ Prev &nbsp; Next ›
       </div>
+    </div>
+  );
+}
+
+// ---- Dataset Viewer Page ----
+
+function DatasetViewer({
+  data,
+  onBack,
+}: {
+  data: ViewResultsData;
+  onBack: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  const models = Array.isArray(data.models) ? data.models : [];
+
+  const datasetName = useMemo(() => {
+    const path = data.output_path || "";
+    const parts = path.split("/");
+    return parts.length > 1 ? parts[parts.length - 2] : parts[0] || "Dataset";
+  }, [data.output_path]);
+
+  const allRecords = useMemo(() => {
+    if (models.length === 0) return [];
+    return models[0].records.map((r) => r.record);
+  }, [models]);
+
+  const columns = useMemo(() => {
+    const keys = new Set<string>();
+    for (const rec of allRecords) {
+      for (const k of Object.keys(rec)) keys.add(k);
+    }
+    return Array.from(keys);
+  }, [allRecords]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return allRecords;
+    const q = search.toLowerCase();
+    return allRecords.filter((rec) =>
+      Object.values(rec).some((v) =>
+        v != null && String(v).toLowerCase().includes(q)
+      )
+    );
+  }, [allRecords, search]);
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, pageSize]);
+
+  return (
+    <div>
+      {/* Back button */}
+      <div style={{ marginBottom: "16px" }}>
+        <button
+          onClick={onBack}
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--color-text-secondary)",
+            cursor: "pointer",
+            fontSize: "13px",
+            padding: "4px 0",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            fontFamily: "var(--font-sans)",
+          }}
+        >
+          <span style={{ fontSize: "16px" }}>←</span> Back to evaluations
+        </button>
+      </div>
+
+      {/* Header */}
+      <div style={{ marginBottom: "24px" }}>
+        <h1 style={{ fontSize: "20px", fontWeight: 600, margin: "0 0 4px", color: "#FFFFFF" }}>
+          {datasetName}
+        </h1>
+        <p style={{ fontSize: "14px", color: "var(--color-text-muted, var(--color-text-secondary))", margin: 0 }}>
+          {allRecords.length} record{allRecords.length !== 1 ? "s" : ""}
+          {filtered.length !== allRecords.length && ` · ${filtered.length} matching`}
+        </p>
+      </div>
+
+      {/* Search bar */}
+      <div style={{ display: "flex", gap: "12px", marginBottom: "20px", alignItems: "center" }}>
+        <div style={{ position: "relative", flex: 1 }}>
+          <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--color-text-muted, var(--color-text-secondary))", pointerEvents: "none" }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M11.5 11.5L14 14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.2"/></svg>
+          </span>
+          <input
+            type="text"
+            placeholder="Search dataset records..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              ...styles.searchInput,
+              flex: "unset",
+              width: "100%",
+              paddingLeft: "36px",
+              background: "#141414",
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Dataset table */}
+      <div style={styles.tableWrapper}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={{ ...styles.th, textTransform: "none" as const, textAlign: "center" as const, width: "50px", color: "#FFFFFF" }}>#</th>
+              {columns.map((col) => (
+                <th key={col} style={{ ...styles.th, textTransform: "none" as const, textAlign: "left" as const, color: "#FFFFFF" }}>
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {paginated.map((rec, idx) => {
+              const globalIdx = (currentPage - 1) * pageSize + idx;
+              return (
+                <tr key={globalIdx}>
+                  <td style={{ ...styles.td, textAlign: "center", color: "var(--color-text-muted, var(--color-text-secondary))", fontSize: "12px" }}>
+                    {globalIdx + 1}
+                  </td>
+                  {columns.map((col) => {
+                    const val = rec[col];
+                    const displayVal = val == null ? "—" : typeof val === "object" ? JSON.stringify(val) : String(val);
+                    return (
+                      <td
+                        key={col}
+                        title={displayVal}
+                        style={{
+                          ...styles.td,
+                          textAlign: "left",
+                          fontFamily: "var(--font-sans)",
+                          color: "#FFFFFF",
+                          maxWidth: "300px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {displayVal}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {filtered.length === 0 && (
+        <div style={{ textAlign: "center", padding: "40px", color: "var(--color-text-muted, var(--color-text-secondary))" }}>
+          {search ? "No records match your search." : "No records found."}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ ...styles.pagination, padding: "12px 0" }}>
+          <button
+            style={{ ...styles.pageButton, ...(currentPage === 1 ? styles.pageButtonDisabled : {}) }}
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+          >
+            ‹ Prev
+          </button>
+          <span style={styles.pageInfo}>Page {currentPage} of {totalPages}</span>
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            style={styles.pageSizeSelect}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size} / page</option>
+            ))}
+          </select>
+          <button
+            style={{ ...styles.pageButton, ...(currentPage === totalPages ? styles.pageButtonDisabled : {}) }}
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+          >
+            Next ›
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2259,8 +2696,9 @@ function StandaloneResultsViewer({ initialData }: { initialData: ViewResultsData
   // Navigation: null = overview, "detail" = experiment detail, "compare" = comparison table
   const [selectedExperiment, setSelectedExperiment] = useState<string | null>(null);
   const [showCompare, setShowCompare] = useState(false);
+  const [showDataset, setShowDataset] = useState(false);
 
-  const currentExperiment = data.output_path.split("/").pop() || "";
+  const currentExperiment = (data.output_path || "").split("/").pop() || "";
 
   useEffect(() => {
     fetch("api/experiments")
@@ -2289,6 +2727,7 @@ function StandaloneResultsViewer({ initialData }: { initialData: ViewResultsData
     async (name: string) => {
       setSelectedExperiment(name);
       setShowCompare(false);
+      setShowDataset(false);
       if (name === currentExperiment) return;
       setLoading(true);
       try {
@@ -2311,6 +2750,7 @@ function StandaloneResultsViewer({ initialData }: { initialData: ViewResultsData
   const goBackToOverview = useCallback(() => {
     setSelectedExperiment(null);
     setShowCompare(false);
+    setShowDataset(false);
     // If we don't have experiments yet, retry the fetch
     if (experiments.length === 0) {
       setExperimentsFetched(false);
@@ -2333,7 +2773,32 @@ function StandaloneResultsViewer({ initialData }: { initialData: ViewResultsData
 
   const goBackToDetail = useCallback(() => {
     setShowCompare(false);
+    setShowDataset(false);
   }, []);
+
+  const viewDataset = useCallback(
+    async (experimentName: string) => {
+      setShowDataset(true);
+      setShowCompare(false);
+      setSelectedExperiment(experimentName);
+      if (experimentName === currentExperiment) return;
+      setLoading(true);
+      try {
+        const res = await fetch(`api/results/${encodeURIComponent(experimentName)}`);
+        const result = await res.json();
+        if (result.data) {
+          setData(result.data);
+        } else if (result.summary) {
+          setData(result);
+        }
+      } catch (e) {
+        console.error("Failed to load experiment:", e);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [currentExperiment]
+  );
 
   // Loading experiments list
   if (!experimentsFetched) {
@@ -2349,7 +2814,7 @@ function StandaloneResultsViewer({ initialData }: { initialData: ViewResultsData
     if (experiments.length > 0) {
       return (
         <main style={styles.main}>
-          <ExperimentsOverview experiments={experiments} onSelect={loadExperiment} />
+          <ExperimentsOverview experiments={experiments} onSelect={loadExperiment} onViewDataset={viewDataset} />
         </main>
       );
     }
@@ -2363,6 +2828,19 @@ function StandaloneResultsViewer({ initialData }: { initialData: ViewResultsData
             data={data}
             onCompare={() => setShowCompare(true)}
           />
+        )}
+      </main>
+    );
+  }
+
+  // Dataset viewer page
+  if (showDataset) {
+    return (
+      <main style={styles.main}>
+        {loading ? (
+          <div style={{ ...styles.loading, padding: "60px" }}>Loading...</div>
+        ) : (
+          <DatasetViewer data={data} onBack={goBackToOverview} />
         )}
       </main>
     );
@@ -2532,10 +3010,58 @@ function McpResultsViewerApp() {
   );
 }
 
+/** Friendly empty state shown when there is no experiment data. */
+function EmptyStateMessage() {
+  return (
+    <main style={styles.main}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "60vh",
+          gap: "20px",
+          textAlign: "center",
+          padding: "40px 20px",
+        }}
+      >
+        <img src={EVEE_LOGO} alt="Evee" style={{ height: "48px", opacity: 0.7 }} />
+        <h2
+          style={{
+            fontSize: "18px",
+            fontWeight: 600,
+            color: "var(--color-text-primary)",
+            margin: 0,
+          }}
+        >
+          No evaluation results yet
+        </h2>
+        <p
+          style={{
+            fontSize: "14px",
+            color: "var(--color-text-muted, var(--color-text-secondary))",
+            margin: 0,
+            maxWidth: "420px",
+            lineHeight: 1.6,
+          }}
+        >
+          Run an evaluation to see results here.
+        </p>
+      </div>
+    </main>
+  );
+}
+
 /** Route to standalone or MCP mode based on whether data is pre-injected. */
 function ResultsViewerApp() {
   if (window.__EVEE_RESULTS_DATA__) {
     return <StandaloneResultsViewer initialData={window.__EVEE_RESULTS_DATA__} />;
+  }
+  // If opened directly without MCP or injected data, show a friendly empty state
+  // instead of hanging on "Connecting to MCP server..."
+  if (typeof window.__EVEE_RESULTS_DATA__ === "undefined" && !window.location.search.includes("mcp")) {
+    return <EmptyStateMessage />;
   }
   return <McpResultsViewerApp />;
 }

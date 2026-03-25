@@ -32,17 +32,24 @@ from .tracking import (
 def _extract_tool_definitions_from_trace(agent_trace) -> list:
     """Extract tool definitions from OTel trace spans.
 
-    MAF emits gen_ai.tool.definitions on the invoke_agent span.
-    The OpenAI instrumentor will emit it once PR #3378 lands.
+    Checks multiple sources in priority order:
+    1. gen_ai.tool.definitions (MAF / standard semconv)
+    2. gen_ai.request.tools (azure-ai-projects ResponsesInstrumentor)
+    3. Inferred from tool calls in the conversation (fallback, same as RAISvc cloud)
     """
-    for span in agent_trace.spans:
-        tool_defs = span.attributes.get("gen_ai.tool.definitions")
-        if tool_defs:
-            import json
+    import json as _json
+
+    # Try explicit tool definitions from span attributes
+    for attr_name in ("gen_ai.tool.definitions", "gen_ai.request.tools"):
+        for span in agent_trace.spans:
+            tool_defs = span.attributes.get(attr_name)
+            if not tool_defs:
+                continue
+
             if isinstance(tool_defs, str):
                 try:
-                    parsed = json.loads(tool_defs)
-                except (json.JSONDecodeError, ValueError):
+                    parsed = _json.loads(tool_defs)
+                except (_json.JSONDecodeError, ValueError):
                     continue
             elif isinstance(tool_defs, (list, tuple)):
                 parsed = list(tool_defs)
@@ -50,7 +57,6 @@ def _extract_tool_definitions_from_trace(agent_trace) -> list:
                 continue
 
             # Flatten nested OpenAI format if needed
-            # {"type": "function", "function": {"name": ...}} → {"name": ..., "type": "function", ...}
             result = []
             for td in parsed:
                 if isinstance(td, dict) and "function" in td and isinstance(td["function"], dict):
@@ -61,7 +67,90 @@ def _extract_tool_definitions_from_trace(agent_trace) -> list:
                     result.append(td)
             if result:
                 return result
-    return []
+
+    # Fallback: infer tool definitions from tool calls in the trace
+    # (same approach as RAISvc cloud evaluation)
+    return _infer_tool_definitions_from_trace(agent_trace)
+
+
+def _infer_tool_definitions_from_trace(agent_trace) -> list:
+    """Infer tool definitions from tool calls found in the trace.
+
+    When gen_ai.tool.definitions is not available, we can derive basic tool
+    definitions from the tool calls themselves (names + argument types).
+    This matches what the RAISvc cloud evaluation does as a fallback.
+    """
+    import json as _json
+
+    inferred: dict = {}
+
+    # From execute_tool spans
+    for span in agent_trace.spans:
+        if span.operation_name == "execute_tool":
+            name = span.attributes.get("gen_ai.tool.name", "")
+            if name and name not in inferred:
+                args_raw = span.attributes.get("gen_ai.tool.call.arguments", {})
+                if isinstance(args_raw, str):
+                    try:
+                        args_raw = _json.loads(args_raw)
+                    except (_json.JSONDecodeError, ValueError):
+                        args_raw = {}
+
+                # Build parameter schema from argument values
+                props = {}
+                if isinstance(args_raw, dict):
+                    for k, v in args_raw.items():
+                        if isinstance(v, str):
+                            props[k] = {"type": "string"}
+                        elif isinstance(v, bool):
+                            props[k] = {"type": "boolean"}
+                        elif isinstance(v, int):
+                            props[k] = {"type": "integer"}
+                        elif isinstance(v, float):
+                            props[k] = {"type": "number"}
+                        else:
+                            props[k] = {"type": "string"}
+
+                inferred[name] = {
+                    "name": name,
+                    "type": "function",
+                    "description": span.attributes.get("gen_ai.tool.description", name),
+                    "parameters": {"type": "object", "properties": props},
+                }
+
+    # From tool_calls in the trace
+    for tc in agent_trace.tool_calls:
+        name = tc.get("name", "")
+        if name and name not in inferred:
+            args = tc.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = _json.loads(args)
+                except (_json.JSONDecodeError, ValueError):
+                    args = {}
+
+            props = {}
+            if isinstance(args, dict):
+                for k, v in args.items():
+                    if isinstance(v, str):
+                        props[k] = {"type": "string"}
+                    elif isinstance(v, bool):
+                        props[k] = {"type": "boolean"}
+                    elif isinstance(v, int):
+                        props[k] = {"type": "integer"}
+                    elif isinstance(v, float):
+                        props[k] = {"type": "number"}
+                    else:
+                        props[k] = {"type": "string"}
+
+            inferred[name] = {
+                "name": name,
+                "type": "function",
+                "description": name,
+                "parameters": {"type": "object", "properties": props},
+            }
+
+    return list(inferred.values())
 
 
 class ModelEvaluator:
@@ -587,6 +676,11 @@ class ModelEvaluator:
         Returns:
             Summary dictionary with results
         """
+        # Suppress noisy non-fatal warnings from SDK evaluators and LangChain callbacks
+        import logging as _logging
+        for _logger_name in ("langchain_core.callbacks.manager", "langchain_core.callbacks", "langchain_azure_ai"):
+            _logging.getLogger(_logger_name).setLevel(_logging.ERROR)
+
         self.tracking_backend.on_experiment_started(
             ExperimentStartEvent(
                 experiment_name=self.config.experiment.name,

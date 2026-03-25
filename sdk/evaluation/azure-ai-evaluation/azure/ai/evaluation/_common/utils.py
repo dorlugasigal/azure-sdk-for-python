@@ -605,7 +605,7 @@ def filter_to_used_tools(tool_definitions, msgs_lists, logger=None):
         return filtered_tools
     except Exception as e:
         if logger:
-            logger.warning(f"Failed to filter tool definitions, returning original list. Error: {e}")
+            logger.debug(f"Failed to filter tool definitions, returning original list. Error: {e}")
         return tool_definitions
 
 

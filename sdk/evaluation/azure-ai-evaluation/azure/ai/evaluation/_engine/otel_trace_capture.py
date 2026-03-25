@@ -259,6 +259,27 @@ class AgentTrace:
             if span.operation_name in ("invoke_agent", "invoke_workflow"):
                 continue
 
+            # Process gen_ai.input.messages for tool results
+            # (ResponsesInstrumentor puts tool_call_response in the input of the follow-up span)
+            inp_raw = span.attributes.get("gen_ai.input.messages")
+            if inp_raw:
+                inp_msgs = json.loads(inp_raw) if isinstance(inp_raw, str) else inp_raw
+                if isinstance(inp_msgs, list):
+                    for msg in inp_msgs:
+                        if not isinstance(msg, dict) or msg.get("role") != "tool":
+                            continue
+                        for part in msg.get("parts", []):
+                            if not isinstance(part, dict):
+                                continue
+                            ptype = part.get("type", "")
+                            if ptype in ("tool_call_response", "tool_result"):
+                                tc_id = part.get("id", "")
+                                result_val = part.get("result", part.get("response", part.get("tool_result", "")))
+                                if tc_id and tc_id not in seen_result_ids:
+                                    seen_result_ids.add(tc_id)
+                                    messages.append({"role": "tool", "tool_call_id": tc_id,
+                                                     "content": [{"type": "tool_result", "tool_call_id": tc_id, "tool_result": str(result_val)}]})
+
             out_raw = span.attributes.get("gen_ai.output.messages")
             if not out_raw:
                 continue
@@ -454,7 +475,7 @@ class OTelTraceCapture:
         self._log_provider.add_log_record_processor(SimpleLogRecordProcessor(_LogCollector()))
         otel_logs.set_logger_provider(self._log_provider)
 
-        # Auto-instrument OpenAI SDK
+        # Auto-instrument OpenAI SDK (chat.completions.create)
         try:
             from opentelemetry.instrumentation.openai_v2 import OpenAIInstrumentor
             OpenAIInstrumentor().instrument()
@@ -462,6 +483,15 @@ class OTelTraceCapture:
         except ImportError:
             logger.debug("opentelemetry-instrumentation-openai-v2 not installed — "
                          "only manual spans will be captured")
+
+        # Instrument OpenAI Responses API (responses.create)
+        # azure-ai-projects has a ResponsesInstrumentor that patches the Responses API
+        try:
+            from azure.ai.projects.telemetry._responses_instrumentor import ResponsesInstrumentor
+            ResponsesInstrumentor().instrument(enable_content_recording=True)
+            logger.info("OTel trace capture: OpenAI Responses API instrumentation activated")
+        except ImportError:
+            pass  # azure-ai-projects not installed
 
         # Enable MAF (Microsoft Agent Framework) instrumentation if available
         # MAF emits full OTel traces (spans, messages, tool calls, tool definitions)
@@ -489,6 +519,8 @@ class OTelTraceCapture:
         if self._capture_content:
             import os
             os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "true")
+            os.environ.setdefault("AZURE_EXPERIMENTAL_ENABLE_GENAI_TRACING", "true")
+            os.environ.setdefault("AZURE_SDK_TRACING_IMPLEMENTATION", "opentelemetry")
 
         self._tracer = otel_trace.get_tracer("azure.ai.evaluation.engine")
         self._setup_done = True
