@@ -71,7 +71,7 @@ class WeatherAgentLocalTarget(BaseTarget):
     """
 
     PROJECT_ENDPOINT = "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"
-    DEPLOYMENT = "gpt-4.1-mini"
+    DEPLOYMENT = "gpt-4.1"
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)

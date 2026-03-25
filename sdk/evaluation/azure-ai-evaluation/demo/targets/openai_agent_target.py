@@ -79,7 +79,7 @@ class WeatherAgentOpenAITarget(BaseTarget):
         query = input.get("query") or input.get("question") or input.get("prompt") or str(list(input.values())[0])
 
         response = self._client.responses.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             input=query,
             tools=TOOL_SCHEMAS,
             instructions="You are a helpful weather assistant. Use tools to answer. Be concise.",
@@ -103,7 +103,7 @@ class WeatherAgentOpenAITarget(BaseTarget):
                 })
 
             response = self._client.responses.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1",
                 input=tool_results,
                 tools=TOOL_SCHEMAS,
                 previous_response_id=response.id,

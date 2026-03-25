@@ -58,8 +58,8 @@ class WeatherAgentLangChainTarget(BaseTarget):
 
         model = AzureChatOpenAI(
             azure_endpoint=AZURE_ENDPOINT,
-            azure_deployment="gpt-4.1-mini",
-            model="gpt-4.1-mini",
+            azure_deployment="gpt-4.1",
+            model="gpt-4.1",
             azure_ad_token_provider=token_provider,
             api_version="2025-04-01-preview",
         )

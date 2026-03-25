@@ -73,4 +73,4 @@ experiment:
   connections:
     default:
       azure_endpoint: "https://foundry-evee-ko9z2s7c.cognitiveservices.azure.com/"
-      azure_deployment: "gpt-4.1-mini"
+      azure_deployment: "gpt-4.1"
