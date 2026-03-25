@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ..config import Config
+import logging
+from typing import Any, Optional
 
 from .backend import TrackingBackend
 from .noop import NoOpFallbackBackend
+
+logger = logging.getLogger(__name__)
 
 
 def create_tracking_backend(
@@ -18,41 +18,32 @@ def create_tracking_backend(
     """Create tracking backend from config.
 
     Args:
-        config: Full Config object (reads experiment.tracking_backend)
+        config: Full Config object. If provided, the tracking backend type
+            is read from ``config.experiment.tracking_backend.type``.
         tracking_enabled: If False, always returns NoOpFallbackBackend
+            without any warning.
 
     Returns:
-        TrackingBackend instance
+        NoOpFallbackBackend (only backend currently available)
     """
-    if not tracking_enabled or config is None:
+    if not tracking_enabled:
         return NoOpFallbackBackend()
 
-    tracking_config = None
-    if hasattr(config, "experiment"):
-        tracking_config = getattr(config.experiment, "tracking_backend", None)
+    tracking_type = _get_tracking_type(config)
 
-    if not tracking_config:
-        return NoOpFallbackBackend()
+    if tracking_type == "foundry":
+        logger.warning(
+            "Foundry tracking is not yet supported. Results will not be "
+            "published to Foundry. Use --remote to run evaluations on "
+            "Foundry compute instead."
+        )
 
-    backend_type = getattr(tracking_config, "type", "none")
+    return NoOpFallbackBackend()
 
-    if backend_type == "none" or not backend_type:
-        return NoOpFallbackBackend()
 
-    if backend_type == "foundry":
-        try:
-            from .foundry_backend import FoundryTrackingBackend  # type: ignore[import-not-found]
-
-            config_dict = (
-                tracking_config.model_dump()
-                if hasattr(tracking_config, "model_dump")
-                else dict(tracking_config)
-            )
-            return FoundryTrackingBackend(config=config_dict)
-        except ImportError:
-            return NoOpFallbackBackend()
-
-    raise ValueError(
-        f"Unknown tracking backend type: '{backend_type}'. "
-        f"Available: none, foundry"
-    )
+def _get_tracking_type(config: Optional[Any]) -> Optional[str]:
+    """Safely extract the tracking backend type from a config object."""
+    try:
+        return config.experiment.tracking_backend.type  # type: ignore[union-attr]
+    except AttributeError:
+        return None

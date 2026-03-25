@@ -55,12 +55,25 @@ class LocalComputeBackend(ComputeBackend):
         try:
             from .evaluator import ModelEvaluator
 
-            evaluator = ModelEvaluator(
-                config_path=context.config_path,
-                model_filter=context.model_filter,
-                tracking_enabled=context.tracking_enabled,
-            )
-            dataset = evaluator.load_dataset(dataset_path=context.dataset_path)
+            # Show spinner during init (imports, target setup, evaluator registration)
+            try:
+                from rich.console import Console
+                _con = Console()
+                with _con.status("[bold cyan]Initializing targets and evaluators..."):
+                    evaluator = ModelEvaluator(
+                        config_path=context.config_path,
+                        model_filter=context.model_filter,
+                        tracking_enabled=context.tracking_enabled,
+                    )
+                    dataset = evaluator.load_dataset(dataset_path=context.dataset_path)
+            except ImportError:
+                evaluator = ModelEvaluator(
+                    config_path=context.config_path,
+                    model_filter=context.model_filter,
+                    tracking_enabled=context.tracking_enabled,
+                )
+                dataset = evaluator.load_dataset(dataset_path=context.dataset_path)
+
             result = evaluator.evaluate(dataset)
 
             return JobInfo(

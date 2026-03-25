@@ -9,12 +9,11 @@
 local-evals separates **what** to evaluate (config) from **how** to run it (CLI flags):
 
 - **Config** defines: dataset, targets, evaluators, connections
-- **CLI flags** control: `--remote` (Foundry cloud) and `--no-tracking` (skip result publishing)
+- **CLI flags** control: `--remote` (Foundry cloud)
 
 ```bash
 # Same config, different modes:
-local-evals run -c config.yaml --no-tracking     # Local only, skip publishing
-local-evals run -c config.yaml                    # Local + publish to Foundry (tracking_backend in config)
+local-evals run -c config.yaml                    # Run locally
 local-evals run -c config.yaml --remote           # Run on Foundry cloud
 ```
 
@@ -27,10 +26,7 @@ local-evals run -c config.yaml --remote           # Run on Foundry cloud
 Score pre-computed responses with built-in metrics. No targets needed.
 
 ```bash
-# Local only (F1 is local, relevance calls Azure OpenAI)
-local-evals run -c demo/configs/evals_mixed.yaml --no-tracking
-
-# Same config, publish results to Foundry
+# Local (F1 is local, relevance calls Azure OpenAI)
 local-evals run -c demo/configs/evals_mixed.yaml
 
 # Same config, run entirely on Foundry cloud
@@ -46,7 +42,7 @@ local-evals run -c demo/configs/evals_mixed.yaml --remote
 Create your own `@evaluator` class — auto-discovered from the working directory.
 
 ```bash
-local-evals run -c demo/configs/evals_custom_evaluator.yaml --no-tracking
+local-evals run -c demo/configs/evals_custom_evaluator.yaml
 ```
 
 **Config:** [`configs/evals_custom_evaluator.yaml`](configs/evals_custom_evaluator.yaml) — `f1_score` + custom `answer_length` from [`evaluators/answer_length_evaluator.py`](evaluators/answer_length_evaluator.py).
@@ -59,7 +55,7 @@ Compare **multiple models × multiple parameters** in one experiment.
 
 ```bash
 # Run locally
-local-evals run -c demo/configs/evals_model_comparison.yaml --no-tracking
+local-evals run -c demo/configs/evals_model_comparison.yaml
 
 # Run on Foundry cloud (side-by-side comparison in portal)
 local-evals run -c demo/configs/evals_model_comparison.yaml --remote
@@ -75,9 +71,6 @@ Evaluate an AI agent with **tool calls**. Targets just return `{"answer": text}`
 
 ```bash
 # Full agent eval (coherence, task adherence, tool call accuracy)
-local-evals run -c demo/configs/evals_agent_full.yaml --no-tracking
-
-# Same, publish results to Foundry
 local-evals run -c demo/configs/evals_agent_full.yaml
 ```
 
@@ -97,7 +90,7 @@ def infer(self, input):
 Same weather agent, 3 frameworks, side-by-side:
 
 ```bash
-local-evals run -c demo/configs/evals_multi_framework.yaml --no-tracking
+local-evals run -c demo/configs/evals_multi_framework.yaml
 ```
 
 **Config:** [`configs/evals_multi_framework.yaml`](configs/evals_multi_framework.yaml)
@@ -146,8 +139,7 @@ The agent must be published in the Foundry project (visible in the portal under 
 ### CLI
 
 ```bash
-local-evals run -c <config>                        # Run locally + publish (if tracking configured)
-local-evals run -c <config> --no-tracking          # Run locally, skip publishing
+local-evals run -c <config>                        # Run locally
 local-evals run -c <config> --remote               # Run on Foundry cloud
 local-evals list                                   # List built-in evaluators
 local-evals new <name>                             # Scaffold new project

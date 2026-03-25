@@ -54,13 +54,13 @@ def evaluate_v2(
 
 
 def _run_engine(
-    config_path: str, cleanup_config: bool = False, tracking_enabled: bool = True
+    config_path: str, cleanup_config: bool = False
 ) -> Dict[str, Any]:
     """Run the evee engine with a config file."""
     from azure.ai.evaluation._engine.evaluator import ModelEvaluator
     from azure.ai.evaluation._engine.discovery import discover_components
     discover_components()
-    evaluator = ModelEvaluator(config_path=config_path, tracking_enabled=tracking_enabled)
+    evaluator = ModelEvaluator(config_path=config_path)
     dataset = evaluator.load_dataset()
     result = evaluator.evaluate(dataset)
     if cleanup_config:

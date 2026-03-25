@@ -57,6 +57,13 @@ NLP_EVALUATORS = {
 _POLL_INTERVAL_SECONDS = 3
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
+# Evaluators on a 1-5 ordinal scale (pass threshold = 3).
+# Everything else is 0-1 binary or continuous (pass threshold = 0.5).
+_ORDINAL_1_5_EVALUATORS = frozenset({
+    "coherence", "relevance", "fluency",
+    "intent_resolution", "tool_call_accuracy",
+})
+
 
 def _build_portal_url(endpoint: str, eval_id: str) -> Optional[str]:
     """Build Azure AI Foundry portal URL from endpoint and eval ID.
@@ -418,7 +425,7 @@ def _upload_custom_metric(
         "evaluator_name": evaluator_name,
         "initialization_parameters": {
             "deployment_name": deployment_name or "gpt-4.1-mini",
-            "pass_threshold": 0.5,
+            "pass_threshold": 3.0 if evaluator_name in _ORDINAL_1_5_EVALUATORS else 0.5,
         },
     }
 
@@ -655,13 +662,10 @@ def run_remote_evaluation(
                     if param == "response":
                         current = criteria["data_mapping"][param]
                         if "output_items" in current:
-                            criteria["data_mapping"][param] = "{{sample.output_items}}"
-                        elif has_agent_targets:
-                            # Agent targets: output_text is often empty when agents
-                            # make tool calls. Use output_items for all evaluators
-                            # so they see the full structured response.
+                            # Explicitly mapped to output_items in YAML — keep it
                             criteria["data_mapping"][param] = "{{sample.output_items}}"
                         else:
+                            # Text-based evaluators get the final answer text
                             criteria["data_mapping"][param] = "{{sample.output_text}}"
 
     # --- Create evaluation -------------------------------------------------

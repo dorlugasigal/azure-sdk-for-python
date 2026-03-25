@@ -64,7 +64,12 @@ class WeatherAgentOpenAITarget(BaseTarget):
         super().__init__(**kwargs)
 
         conn = self.get_connection(connections_registry, connection_name)
-        project_endpoint = conn["azure_ai_project"]
+        project_endpoint = conn.get("azure_ai_project")
+        if not project_endpoint:
+            raise ValueError(
+                f"Connection '{connection_name}' is missing 'azure_ai_project'. "
+                "Add it to the connections section of your YAML config."
+            )
         self._deployment = conn.get("azure_deployment", "gpt-4.1")
 
         from azure.identity import AzureCliCredential
@@ -113,5 +118,5 @@ class WeatherAgentOpenAITarget(BaseTarget):
             )
 
         # Just return the answer — engine handles the rest via OTel
-        return {"answer": response.output_text or ""}
+        return {"answer": response.output_text or "", "tool_definitions": TOOL_SCHEMAS}
 

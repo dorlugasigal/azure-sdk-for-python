@@ -457,6 +457,7 @@ def run(path, config, dataset_path, env, remote, models, no_tracking, auto_appro
                         _echo(url)
                 elif metadata.get("tracking_backend"):
                     _echo(f"\n[dim]Tracking backend: {metadata['tracking_backend']}[/dim]" if _HAS_RICH else f"\nTracking backend: {metadata['tracking_backend']}")
+
             else:
                 # Remote / Foundry compute results
                 remote_panel: Dict[str, str] = {
@@ -1019,12 +1020,16 @@ def view(port, no_browser):
                     _console.print("\n[yellow]Stopping server...[/yellow]")
                 else:
                     click.echo("\nStopping server...")
-                httpd.shutdown()
-                httpd.server_close()
+                # shutdown() must run on a separate thread since serve_forever()
+                # is blocking the main thread — it polls an internal flag that
+                # shutdown() sets, but it can't poll while the signal handler
+                # is executing on the same thread.
+                threading.Thread(target=httpd.shutdown, daemon=True).start()
 
             signal.signal(signal.SIGINT, _shutdown)
             signal.signal(signal.SIGTERM, _shutdown)
             httpd.serve_forever()
+            httpd.server_close()
     except OSError as e:
         if "Address already in use" in str(e):
             _echo_error(f"Port {port} is already in use. Try: local-evals view --port {port + 1}")

@@ -2,8 +2,7 @@ experiment:
   name: "agent-full-evaluation"
 
   tracking_backend:
-    type: "foundry"
-    azure_ai_project: "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"
+    type: "none"
 
   targets:
     - name: "weather_agent_local_maf"        # MAF @target with tool execution

@@ -2,8 +2,7 @@ experiment:
   name: "multi-framework-agent-comparison"
 
   tracking_backend:
-    type: "foundry"
-    azure_ai_project: "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"
+    type: "none"
 
   targets:
     - name: "weather_agent_local_maf"        # MAF — from weather_agent_target.py
@@ -73,4 +72,5 @@ experiment:
   connections:
     default:
       azure_endpoint: "https://foundry-evee-ko9z2s7c.cognitiveservices.azure.com/"
-      azure_deployment: "gpt-4.1"
+      azure_deployment: "gpt-4.1-mini"
+      azure_ai_project: "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"

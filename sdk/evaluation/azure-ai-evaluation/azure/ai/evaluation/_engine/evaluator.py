@@ -350,8 +350,6 @@ class ModelEvaluator:
                 project_endpoint = conn.get("azure_ai_project")
         if not project_endpoint and self.config.experiment.compute:
             project_endpoint = getattr(self.config.experiment.compute, "azure_ai_project", None)
-        if not project_endpoint and self.config.experiment.tracking_backend:
-            project_endpoint = getattr(self.config.experiment.tracking_backend, "azure_ai_project", None)
 
         agent_name = target_cfg.agent_name or target_cfg.name
         agent_version = getattr(target_cfg, "agent_version", None)
@@ -371,8 +369,7 @@ class ModelEvaluator:
                 if not project_endpoint:
                     raise ValueError(
                         "azure_ai_project endpoint is required for agent targets. "
-                        "Set it on the target config, connection, compute config, "
-                        "or tracking_backend config."
+                        "Set it on the target config, connection, or compute config."
                     )
 
                 self._project_client = AIProjectClient(
@@ -1024,6 +1021,26 @@ class ModelEvaluator:
                         tool_defs = _extract_tool_definitions_from_trace(agent_trace)
                         if tool_defs:
                             model_output["tool_definitions"] = tool_defs
+
+                # Fallback: infer tool definitions from tool_calls if still missing
+                # (covers cases where OTel doesn't capture gen_ai.request.tools)
+                if "tool_definitions" not in model_output and model_output.get("tool_calls"):
+                    inferred = _infer_tool_definitions_from_trace(agent_trace) if agent_trace else []
+                    if not inferred:
+                        # Infer from model_output["tool_calls"] directly
+                        seen = {}
+                        for tc in model_output["tool_calls"]:
+                            name = tc.get("name", "")
+                            if name and name not in seen:
+                                args = tc.get("arguments", {})
+                                props = {k: {"type": "string"} for k in args} if isinstance(args, dict) else {}
+                                seen[name] = {
+                                    "type": "function", "name": name, "description": name,
+                                    "parameters": {"type": "object", "properties": props},
+                                }
+                        inferred = list(seen.values())
+                    if inferred:
+                        model_output["tool_definitions"] = inferred
 
                 # Fallback: minimal output_items from answer text
                 if "output_items" not in model_output and "answer" in model_output:
