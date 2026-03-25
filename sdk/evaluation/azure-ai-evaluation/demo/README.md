@@ -112,6 +112,36 @@ All return just the answer — the engine auto-enriches with `output_items`, `to
 
 ---
 
+### 6. Remote Agent Evaluation — `azure_ai_agent` Target
+
+Evaluate an agent **published in Azure AI Foundry** without writing any target code.
+The `azure_ai_agent` target type invokes the agent via the Responses API — Foundry handles tool execution server-side.
+
+```bash
+# Run on Foundry cloud — agent runs remotely, evaluators run remotely
+local-evals run -c demo/context7_agent_eval/eval_config.yaml --remote
+```
+
+**Config:** [`context7_agent_eval/eval_config.yaml`](context7_agent_eval/eval_config.yaml) — a documentation assistant connected to a [Context7](https://context7.com) MCP server, evaluated with `coherence`, `relevance`, `task_adherence`, `intent_resolution`.
+
+```yaml
+targets:
+  - name: "context7-docs-agent"
+    type: "azure_ai_agent"        # No target code needed
+    agent_name: "context7-docs-agent"
+    connection_name: "default"    # Resolves project from connections block
+
+connections:
+  default:
+    azure_endpoint: "https://..."
+    azure_deployment: "gpt-4.1"
+    azure_ai_project: "https://....services.ai.azure.com/api/projects/..."
+```
+
+The agent must be published in the Foundry project (visible in the portal under **Agents**). The `connection_name` resolves the project endpoint from the shared `connections` block — same pattern used by `azure_ai_model` and custom targets.
+
+---
+
 ## Quick Reference
 
 ### CLI
@@ -136,16 +166,18 @@ experiment:
     args: { data_path: "data.jsonl" }
   targets:                    # What to evaluate (optional)
     - name: "my_agent"
-      type: "custom"          # or "azure_ai_model"
+      type: "custom"          # or "azure_ai_model" or "azure_ai_agent"
+      connection_name: "default"
   evaluators:                 # Which metrics to compute
     - name: "relevance"
       mapping:
         query: "dataset.question"
         response: "model.answer"
-  connections:                # Azure OpenAI for LLM-as-judge evaluators
+  connections:                # Shared connections for targets + LLM-as-judge evaluators
     default:
       azure_endpoint: "..."
       azure_deployment: "gpt-4.1-mini"
+      azure_ai_project: "..."   # Required for azure_ai_agent targets
 ```
 
 ### Capabilities
@@ -154,7 +186,8 @@ experiment:
 |---------|-------|-------------------|
 | Built-in metrics | ✅ | ✅ |
 | Custom `@evaluator` | ✅ Full Python | ⚠️ Sandbox |
-| Custom `@target` | ✅ | ❌ Use `azure_ai_model` |
+| Custom `@target` | ✅ | ❌ Use `azure_ai_model` or `azure_ai_agent` |
+| `azure_ai_agent` target | ✅ | ✅ |
 | OTel trace capture | ✅ Auto-enabled | N/A |
 | Cartesian product | ✅ | ✅ |
 
@@ -168,6 +201,9 @@ demo/
 │   ├── evals_model_comparison.yaml   # Models: 2 models × 2 temps
 │   ├── evals_agent_full.yaml         # Agent: tools + tracing
 │   └── evals_multi_framework.yaml    # Agent: MAF vs OpenAI vs LangChain
+├── context7_agent_eval/  # Remote agent evaluation (azure_ai_agent)
+│   ├── eval_config.yaml              # Config: Context7 MCP agent
+│   └── eval_data.jsonl               # Dataset: documentation queries
 ├── data/                 # Datasets
 │   ├── data.jsonl
 │   ├── data_small.jsonl
