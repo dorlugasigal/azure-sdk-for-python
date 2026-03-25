@@ -15,3 +15,6 @@ experiment:
     - name: "answer_length"
       mapping:
         response: "dataset.answer"
+    - name: "conciseness"
+      mapping:
+        response: "dataset.answer"

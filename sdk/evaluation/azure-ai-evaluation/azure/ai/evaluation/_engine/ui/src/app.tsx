@@ -609,7 +609,7 @@ function extractPrimaryScore(evalValue: Record<string, unknown>, evaluatorKey?: 
   return null;
 }
 
-/** Compute real per-record pass rate like Foundry: any positive grader score = pass. */
+/** Compute real per-record pass rate using explicit result fields or score thresholds. */
 function computePassRate(model: ModelData, evaluatorKey: string): { passed: number; total: number } {
   const records = model.records || [];
   let passed = 0;
@@ -618,12 +618,29 @@ function computePassRate(model: ModelData, evaluatorKey: string): { passed: numb
     const evalData = (record.evaluators || {})[evaluatorKey];
     if (!evalData) continue;
     total++;
-    const score = extractPrimaryScore(evalData, evaluatorKey);
-    if (score !== null && score > 0) passed++;
+    if (isRecordPass(evalData, evaluatorKey)) passed++;
   }
   // Fall back to record count if no evaluator data found
   if (total === 0) total = model.summary.aggregated_evaluators.number_of_records || records.length || 1;
   return { passed, total };
+}
+
+/** Determine if a single evaluator record is a pass.
+ *  1. Check for explicit _result field ("pass"/"fail") from the evaluator backend
+ *  2. Check well-known typed fields (score, f1_score, match)
+ *  3. Fall back to first numeric value with range-based threshold */
+function isRecordPass(evalData: EvaluatorValue, evaluatorKey?: string): boolean {
+  // 1. Explicit _result field (set by SDK evaluators with threshold logic)
+  const resultEntry = Object.entries(evalData).find(([k, v]) => k.endsWith("_result") && typeof v === "string");
+  if (resultEntry) return resultEntry[1] === "pass";
+  // 2. Well-known typed fields
+  if (typeof evalData.score === "number") return evalData.score >= 3;
+  if (typeof evalData.f1_score === "number") return evalData.f1_score >= 0.5;
+  if (typeof evalData.match === "boolean") return evalData.match;
+  // 3. First numeric value — use range-based threshold
+  const score = extractPrimaryScore(evalData, evaluatorKey);
+  if (score === null) return false;
+  return score >= 0 && score <= 1 ? score >= 0.5 : score >= 3;
 }
 
 /** Format overview values like counts and response times as clean integers. */
@@ -1036,6 +1053,16 @@ function DrillDownPanel({ model, onClose }: DrillDownPanelProps) {
     const passStyle = { ...styles.scoreBadge, border: "1px solid var(--color-success, #a0d89f)", color: "var(--color-success, #a0d89f)", background: "transparent", fontSize: "11px" };
     const failStyle = { ...styles.scoreBadge, border: "1px solid var(--color-error, #e74856)", color: "var(--color-error, #e74856)", background: "transparent", fontSize: "11px" };
 
+    // 1. Check for explicit _result field from evaluator backend (authoritative pass/fail)
+    const resultEntry = Object.entries(evaluatorValue).find(([k, v]) => k.endsWith("_result") && typeof v === "string");
+    if (resultEntry) {
+      const isPassed = resultEntry[1] === "pass";
+      const scoreEntry = Object.entries(evaluatorValue).find(([k, v]) => k.endsWith("_score") && typeof v === "number");
+      const scoreDisplay = scoreEntry ? `: ${typeof scoreEntry[1] === "number" && scoreEntry[1] <= 1 ? (scoreEntry[1] as number).toFixed(3) : scoreEntry[1]}` : "";
+      return <span style={isPassed ? passStyle : failStyle}>{isPassed ? "Pass" : "Fail"}{scoreDisplay}</span>;
+    }
+
+    // 2. Well-known typed fields
     if (typeof evaluatorValue.score === "number") {
       const passed = evaluatorValue.score >= 3;
       return <span style={passed ? passStyle : failStyle}>{passed ? "Pass" : "Fail"}: {evaluatorValue.score}</span>;
@@ -1047,6 +1074,7 @@ function DrillDownPanel({ model, onClose }: DrillDownPanelProps) {
     if (typeof evaluatorValue.match === "boolean") {
       return <span style={evaluatorValue.match ? passStyle : failStyle}>{evaluatorValue.match ? "Pass" : "Fail"}</span>;
     }
+    // 3. First numeric value — range-based threshold
     const numericVal = Object.values(evaluatorValue).find((v) => typeof v === "number") as number | undefined;
     if (typeof numericVal === "number") {
       const passed = numericVal >= 0 && numericVal <= 1 ? numericVal >= 0.5 : numericVal >= 3;
@@ -1224,15 +1252,15 @@ function DrillDownPanel({ model, onClose }: DrillDownPanelProps) {
                   onMouseLeave={(e) => { e.currentTarget.style.background = isExpanded ? "var(--color-background-secondary)" : "transparent"; }}
                   title={isExpanded ? "Click to collapse" : "Click to expand full content"}
                 >
-                  {recordFieldKeys.map((k) => (
-                    <td key={k} style={rowCellStyle} title={isExpanded ? undefined : String(record.record[k] ?? "")}>
-                      {typeof record.record[k] === "string"
-                        ? (isExpanded ? String(record.record[k]) : truncate(record.record[k] as string, 60))
-                        : record.record[k] !== undefined
-                          ? String(record.record[k])
-                          : ""}
-                    </td>
-                  ))}
+                  {recordFieldKeys.map((k) => {
+                    const cellVal = record.record[k];
+                    const cellStr = cellVal == null ? "" : typeof cellVal === "object" ? JSON.stringify(cellVal) : String(cellVal);
+                    return (
+                      <td key={k} style={rowCellStyle} title={isExpanded ? undefined : cellStr}>
+                        {isExpanded ? cellStr : truncate(cellStr, 60)}
+                      </td>
+                    );
+                  })}
                   <td style={rowCellStyle} title={isExpanded ? undefined : String(outputText)}>
                     {isExpanded ? String(outputText) : truncate(String(outputText), 60)}
                   </td>
