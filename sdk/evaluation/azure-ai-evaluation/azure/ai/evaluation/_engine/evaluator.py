@@ -337,8 +337,17 @@ class ModelEvaluator:
 
     def _create_azure_ai_agent_target(self, target_cfg) -> type:
         """Create a target that calls a Foundry agent via the Responses API."""
-        # Resolve project endpoint from target config, compute config, or tracking config
+        connections_registry = self.connections_registry
+
+        # Resolve project endpoint: connection → target config → compute → tracking
         project_endpoint = getattr(target_cfg, "azure_ai_project", None)
+        if not project_endpoint:
+            conn_name = getattr(target_cfg, "connection_name", None) or "default"
+            conn = connections_registry.get(conn_name)
+            if conn:
+                if hasattr(conn, "model_dump"):
+                    conn = conn.model_dump()
+                project_endpoint = conn.get("azure_ai_project")
         if not project_endpoint and self.config.experiment.compute:
             project_endpoint = getattr(self.config.experiment.compute, "azure_ai_project", None)
         if not project_endpoint and self.config.experiment.tracking_backend:
@@ -362,7 +371,8 @@ class ModelEvaluator:
                 if not project_endpoint:
                     raise ValueError(
                         "azure_ai_project endpoint is required for agent targets. "
-                        "Set it on the target config, compute config, or tracking_backend config."
+                        "Set it on the target config, connection, compute config, "
+                        "or tracking_backend config."
                     )
 
                 self._project_client = AIProjectClient(

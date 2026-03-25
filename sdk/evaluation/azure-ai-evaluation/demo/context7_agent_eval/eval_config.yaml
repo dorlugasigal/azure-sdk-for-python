@@ -1,0 +1,52 @@
+experiment:
+  name: "context7-agent-evaluation"
+  description: "Evaluate Context7 MCP documentation agent using azure_ai_agent target"
+
+  tracking_backend:
+    type: "foundry"
+    azure_ai_project: "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"
+
+  compute:
+    type: "foundry"
+    azure_ai_project: "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"
+
+  targets:
+    - name: "context7-docs-agent"
+      type: "azure_ai_agent"
+      agent_name: "context7-docs-agent"
+      connection_name: "default"
+
+  dataset:
+    name: "doc_queries"
+    type: "jsonl"
+    args:
+      data_path: "demo/context7_agent_eval/eval_data.jsonl"
+
+  evaluators:
+    # Quality evaluators
+    - name: "coherence"
+      mapping:
+        query: "dataset.query"
+        response: "model.answer"
+
+    - name: "relevance"
+      mapping:
+        query: "dataset.query"
+        response: "model.answer"
+
+    # Agent evaluators
+    - name: "task_adherence"
+      mapping:
+        query: "dataset.query"
+        response: "model.output_items"
+
+    - name: "intent_resolution"
+      mapping:
+        query: "dataset.query"
+        response: "model.output_items"
+
+  connections:
+    default:
+      azure_endpoint: "https://foundry-evee-ko9z2s7c.cognitiveservices.azure.com/"
+      azure_deployment: "gpt-4.1"
+      azure_ai_project: "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"

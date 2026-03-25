@@ -70,11 +70,12 @@ class WeatherAgentLocalTarget(BaseTarget):
     4. Agent synthesizes final text answer
     """
 
-    PROJECT_ENDPOINT = "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"
-    DEPLOYMENT = "gpt-4.1"
-
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, connections_registry: Dict[str, Any] = None, connection_name: str = "default", **kwargs: Any) -> None:
         super().__init__(**kwargs)
+
+        conn = self.get_connection(connections_registry, connection_name)
+        project_endpoint = conn["azure_ai_project"]
+        deployment = conn.get("azure_deployment", "gpt-4.1")
 
         from azure.identity import AzureCliCredential
         from agent_framework.azure import AzureOpenAIResponsesClient
@@ -82,8 +83,8 @@ class WeatherAgentLocalTarget(BaseTarget):
         self._tools = [get_weather, bring_umbrella]
 
         client = AzureOpenAIResponsesClient(
-            project_endpoint=self.PROJECT_ENDPOINT,
-            deployment_name=self.DEPLOYMENT,
+            project_endpoint=project_endpoint,
+            deployment_name=deployment,
             credential=AzureCliCredential(),
         )
         self._agent = client.as_agent(

@@ -87,18 +87,20 @@ class TargetVariantConfig(BaseModel):
     name: str
     type: str = "custom"  # "custom", "azure_ai_model", "azure_ai_agent"
 
+    # Shared: which connection provides the endpoint (applies to model and agent targets)
+    connection_name: str = "default"
+
     # For custom targets: Cartesian product args
     args: Any = Field(default_factory=list)
 
     # For azure_ai_model targets
     deployment_name: Any = None  # str or list for cartesian (e.g., ["gpt-4.1-mini", "gpt-4.1"])
-    connection_name: str = "default"  # local execution only: which connection provides the endpoint
     prompts: List[str] = Field(default_factory=list)  # prompt file paths (each produces a separate run)
 
     # For azure_ai_agent targets
     agent_name: Optional[str] = None
     agent_version: Optional[str] = None
-    azure_ai_project: Optional[str] = None
+    azure_ai_project: Optional[str] = None  # direct override; otherwise resolved from connection
     instructions: Optional[str] = None
 
     @model_validator(mode="before")

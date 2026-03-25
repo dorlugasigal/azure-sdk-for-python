@@ -93,6 +93,26 @@ class BaseTarget(ABC):
         """Perform inference on input."""
         ...
 
+    @staticmethod
+    def get_connection(connections_registry: Optional[Dict[str, Any]], connection_name: str = "default") -> Dict[str, Any]:
+        """Resolve a connection by name from the registry.
+
+        :param connections_registry: The connections registry injected by the engine.
+        :param connection_name: Name of the connection to look up.
+        :returns: Connection dict with keys like azure_endpoint, azure_deployment, azure_ai_project.
+        :raises ValueError: If the connection is not found.
+        """
+        if not connections_registry or connection_name not in connections_registry:
+            raise ValueError(
+                f"Connection '{connection_name}' not found. "
+                f"Available: {list((connections_registry or {}).keys())}. "
+                f"Define it in the 'connections' section of your YAML config."
+            )
+        conn = connections_registry[connection_name]
+        if hasattr(conn, "model_dump"):
+            return conn.model_dump()
+        return dict(conn) if conn else {}
+
 
 # Backward compat alias
 BaseModel = BaseTarget

@@ -51,8 +51,6 @@ TOOL_SCHEMAS = [
     },
 ]
 
-PROJECT_ENDPOINT = "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"
-
 
 @target(name="weather_agent_openai")
 class WeatherAgentOpenAITarget(BaseTarget):
@@ -62,12 +60,17 @@ class WeatherAgentOpenAITarget(BaseTarget):
     all LLM calls and tool invocations via OTel tracing.
     """
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, connections_registry: Dict[str, Any] = None, connection_name: str = "default", **kwargs: Any) -> None:
         super().__init__(**kwargs)
+
+        conn = self.get_connection(connections_registry, connection_name)
+        project_endpoint = conn["azure_ai_project"]
+        self._deployment = conn.get("azure_deployment", "gpt-4.1")
+
         from azure.identity import AzureCliCredential
         from azure.ai.projects import AIProjectClient
 
-        project_client = AIProjectClient(endpoint=PROJECT_ENDPOINT, credential=AzureCliCredential())
+        project_client = AIProjectClient(endpoint=project_endpoint, credential=AzureCliCredential())
         self._client = project_client.get_openai_client()
 
     def infer(self, input: Dict[str, Any]) -> Dict[str, Any]:
@@ -79,7 +82,7 @@ class WeatherAgentOpenAITarget(BaseTarget):
         query = input.get("query") or input.get("question") or input.get("prompt") or str(list(input.values())[0])
 
         response = self._client.responses.create(
-            model="gpt-4.1",
+            model=self._deployment,
             input=query,
             tools=TOOL_SCHEMAS,
             instructions="You are a helpful weather assistant. Use tools to answer. Be concise.",
@@ -103,7 +106,7 @@ class WeatherAgentOpenAITarget(BaseTarget):
                 })
 
             response = self._client.responses.create(
-                model="gpt-4.1",
+                model=self._deployment,
                 input=tool_results,
                 tools=TOOL_SCHEMAS,
                 previous_response_id=response.id,

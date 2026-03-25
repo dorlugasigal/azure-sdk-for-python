@@ -33,9 +33,6 @@ def bring_umbrella(weather_condition: str) -> str:
     return f"{'Yes, bring an umbrella' if should else 'No umbrella needed'} — {weather_condition}."
 
 
-AZURE_ENDPOINT = "https://foundry-evee-ko9z2s7c.cognitiveservices.azure.com/"
-
-
 @target(name="weather_agent_langchain")
 class WeatherAgentLangChainTarget(BaseTarget):
     """LangChain agent using create_react_agent — the standard pattern.
@@ -44,8 +41,12 @@ class WeatherAgentLangChainTarget(BaseTarget):
     OTel captures all LLM calls via the OpenAI instrumentor.
     """
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, connections_registry: Dict[str, Any] = None, connection_name: str = "default", **kwargs: Any) -> None:
         super().__init__(**kwargs)
+
+        conn = self.get_connection(connections_registry, connection_name)
+        azure_endpoint = conn["azure_endpoint"]
+        deployment = conn.get("azure_deployment", "gpt-4.1")
 
         from langchain_openai import AzureChatOpenAI
         from langchain_core.tools import tool as langchain_tool
@@ -57,9 +58,9 @@ class WeatherAgentLangChainTarget(BaseTarget):
         )
 
         model = AzureChatOpenAI(
-            azure_endpoint=AZURE_ENDPOINT,
-            azure_deployment="gpt-4.1",
-            model="gpt-4.1",
+            azure_endpoint=azure_endpoint,
+            azure_deployment=deployment,
+            model=deployment,
             azure_ad_token_provider=token_provider,
             api_version="2025-04-01-preview",
         )
