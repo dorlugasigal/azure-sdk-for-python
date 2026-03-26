@@ -3,10 +3,8 @@
 """new command — create evaluation project from templates."""
 from __future__ import annotations
 
-import json
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -146,217 +144,10 @@ def copy_and_render_template(
 
 
 # ---------------------------------------------------------------------------
-# Interactive prompts
+# Interactive prompts (delegated to shared utility)
 # ---------------------------------------------------------------------------
 
-
-def _select_option(prompt: str, options: list[tuple[str, str]], default: int = 0) -> int:
-    """Arrow-key navigable selection menu. Returns chosen index.
-
-    Each option is ``(label, hint)`` — *hint* is shown dimmed after the label.
-    Falls back to numbered list when stdin is not a TTY.
-    """
-    # Fallback for non-TTY (piped input, CI, etc.)
-    if not sys.stdin.isatty():
-        echo(f"\n{prompt}")
-        for i, (label, _) in enumerate(options):
-            prefix = "(default) " if i == default else ""
-            echo(f"  {i + 1}) {prefix}{label}")
-        raw = click.prompt("Select", default=str(default + 1))
-        return int(raw) - 1
-
-    import termios
-    import tty
-
-    selected = default
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-
-    def _render():
-        sys.stdout.write(f"\r\033[K  {prompt}\r\n")
-        for i, (label, hint) in enumerate(options):
-            if i == selected:
-                line = f"\033[K    \033[36m❯ {label}\033[0m"
-            else:
-                line = f"\033[K      {label}"
-            if hint:
-                line += f"  \033[2m{hint}\033[0m"
-            sys.stdout.write(line + "\r\n")
-        sys.stdout.flush()
-
-    try:
-        tty.setraw(fd)
-        sys.stdout.write("\r\n")
-        _render()
-        while True:
-            ch = sys.stdin.read(1)
-            if ch == "\r" or ch == "\n":
-                break
-            if ch == "\x03":  # Ctrl+C
-                # Restore terminal, clean up, and abort
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-                sys.stdout.write(f"\033[{len(options) + 1}A")
-                for _ in range(len(options) + 1):
-                    sys.stdout.write("\033[K\n")
-                sys.stdout.write(f"\033[{len(options) + 1}A")
-                echo("  Cancelled.")
-                raise SystemExit(0)
-            if ch == "\x1b":  # escape sequence
-                seq = sys.stdin.read(2)
-                if seq == "[A":  # up
-                    selected = (selected - 1) % len(options)
-                elif seq == "[B":  # down
-                    selected = (selected + 1) % len(options)
-            # Move cursor up to re-render
-            sys.stdout.write(f"\033[{len(options) + 1}A")
-            _render()
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-
-    # Clear the menu and print the final selection
-    sys.stdout.write(f"\033[{len(options) + 1}A")
-    for _ in range(len(options) + 1):
-        sys.stdout.write("\033[K\n")
-    sys.stdout.write(f"\033[{len(options) + 1}A")
-    echo(f"  {prompt} [cyan]{options[selected][0]}[/cyan]" if has_rich() else f"  {prompt} {options[selected][0]}")
-
-    return selected
-
-
-def _az_run(args: list[str]) -> dict | list | None:
-    """Run an ``az`` CLI command and return parsed JSON output, or *None* on failure.
-
-    Commands that produce no output (e.g. ``az account set``) return an empty dict
-    on success.
-    """
-    try:
-        result = subprocess.run(
-            ["az", *args],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            return None
-        if not result.stdout.strip():
-            return {}
-        return json.loads(result.stdout)
-    except Exception:
-        return None
-
-
-def _discover_foundry_project() -> dict[str, str] | None:
-    """Interactive Foundry project discovery via ``az`` CLI.
-
-    Returns a dict with ``subscription_id``, ``resource_group``,
-    ``project_name``, and ``endpoint``; or *None* if the user cancels
-    or discovery fails.
-    """
-    # Check az CLI availability
-    try:
-        subprocess.run(
-            ["az", "account", "show"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        az_available = True
-    except Exception:
-        az_available = False
-
-    if not az_available:
-        echo("  Azure CLI not found. Install it: https://aka.ms/install-az")
-        echo("  Falling back to manual configuration.\n")
-        sub_id = click.prompt("  Subscription ID", type=str)
-        rg = click.prompt("  Resource Group", type=str)
-        project = click.prompt("  Project Name", type=str)
-        endpoint = click.prompt("  Endpoint URL", type=str)
-        return {
-            "subscription_id": sub_id.strip(),
-            "resource_group": rg.strip(),
-            "project_name": project.strip(),
-            "endpoint": endpoint.strip(),
-        }
-
-    # --- az CLI is available ---
-    echo("  Authenticating...")
-
-    # Get current subscription (don't list all — users often have 100+)
-    current_sub = _az_run(["account", "show", "--query", "{name:name, id:id}", "-o", "json"])
-    if not current_sub:
-        echo("  Could not determine current Azure subscription.")
-        return None
-
-    echo(f"  Using subscription: [cyan]{current_sub['name']}[/cyan]" if has_rich() else f"  Using subscription: {current_sub['name']}")
-    echo(f"  [dim](Change with: az account set --subscription <name>)[/dim]" if has_rich() else "  (Change with: az account set --subscription <name>)")
-
-    # List Foundry projects in current subscription
-    projects = _az_run([
-        "resource", "list",
-        "--resource-type", "Microsoft.CognitiveServices/accounts/projects",
-        "--query", '[].{name:name, rg:resourceGroup, location:location, id:id}',
-        "-o", "json",
-    ])
-    if not projects:
-        echo("  No Foundry projects found in this subscription.")
-        return None
-
-    proj_options = [(p["name"], f'{p["rg"]} / {p["location"]}') for p in projects]
-    proj_idx = _select_option("Select Foundry project:", proj_options, default=0)
-    selected_proj = projects[proj_idx]
-
-    # Parse project name — resource name is "account/project"
-    full_name = selected_proj["name"]
-    if "/" in full_name:
-        project_name = full_name.split("/", 1)[1]
-    else:
-        project_name = full_name
-
-    # Get endpoint from parent account
-    parent_id = selected_proj["id"]
-    # Strip /projects/<name> from the resource ID to get the parent account ID
-    if "/projects/" in parent_id:
-        parent_id = parent_id[: parent_id.index("/projects/")]
-
-    endpoint_info = _az_run([
-        "resource", "show",
-        "--ids", parent_id,
-        "--query", "{endpoint:properties.endpoint}",
-        "-o", "json",
-    ])
-
-    endpoint = ""
-    if endpoint_info and endpoint_info.get("endpoint"):
-        endpoint = endpoint_info["endpoint"]
-    else:
-        echo("  Could not discover endpoint automatically.")
-        endpoint = click.prompt("  Endpoint URL", type=str).strip()
-
-    # Discover model deployments in the account
-    account_name = full_name.split("/", 1)[0] if "/" in full_name else full_name
-    deployments = _az_run([
-        "cognitiveservices", "account", "deployment", "list",
-        "--name", account_name,
-        "--resource-group", selected_proj["rg"],
-        "--query", "[].{name:name, model:properties.model.name, version:properties.model.version}",
-        "-o", "json",
-    ])
-
-    deployment_name = ""
-    if deployments:
-        dep_options = [(d["name"], f'{d.get("model", "")} {d.get("version", "")}') for d in deployments]
-        dep_idx = _select_option("Select model deployment:", dep_options, default=0)
-        deployment_name = deployments[dep_idx]["name"]
-    else:
-        echo("  [dim]No deployments found — you can add one later.[/dim]" if has_rich() else "  No deployments found — you can add one later.")
-
-    return {
-        "subscription_id": current_sub["id"],
-        "resource_group": selected_proj["rg"],
-        "project_name": project_name,
-        "endpoint": endpoint,
-        "deployment": deployment_name,
-    }
+from ..utils.azure_discovery import discover_foundry_project as _discover_foundry_project, select_option as _select_option
 
 
 def _run_interactive_prompts(
@@ -531,30 +322,36 @@ def new(
 
     # ---- Foundry configuration injection ----
     if foundry_config:
+        # Add Foundry-required dependencies to pyproject.toml
+        pyproject_path = project_path / "pyproject.toml"
+        if pyproject_path.exists():
+            pyproject_text = pyproject_path.read_text(encoding="utf-8")
+            pyproject_text = pyproject_text.replace(
+                '    "python-dotenv>=1.0.0",',
+                '    "python-dotenv>=1.0.0",\n'
+                '    "azure-ai-projects>=1.0.0b7",\n'
+                '    "azure-identity>=1.0.0",',
+            )
+            pyproject_path.write_text(pyproject_text, encoding="utf-8")
+
         # Write .env with Foundry variables
         env_path = project_path / ".env"
         env_lines = [
             "# Evaluation configuration",
             "LOG_LEVEL=INFO",
             "",
-            "# Azure OpenAI connection",
-            f"AZURE_OPENAI_ENDPOINT={foundry_config['endpoint']}",
-            "",
-            "# Azure AI Foundry",
-            f"AZURE_SUBSCRIPTION_ID={foundry_config['subscription_id']}",
-            f"AZURE_RESOURCE_GROUP={foundry_config['resource_group']}",
-            f"AZURE_AI_PROJECT_NAME={foundry_config['project_name']}",
+            "# Azure AI Foundry project endpoint",
             f"AZURE_AI_PROJECT_ENDPOINT={foundry_config['endpoint']}",
             "",
         ]
         env_path.write_text("\n".join(env_lines), encoding="utf-8")
 
-        # Inject compute_backend into config.yaml
+        # Inject compute section into config.yaml
         config_path = project_path / "config.yaml"
         if config_path.exists():
             config_text = config_path.read_text(encoding="utf-8")
             foundry_sections = (
-                '\n  compute_backend:\n'
+                '\n  compute:\n'
                 '    type: "foundry"\n'
                 '    azure_ai_project: "${AZURE_AI_PROJECT_ENDPOINT}"\n'
             )
@@ -573,9 +370,25 @@ def new(
                 'endpoint: "${AZURE_AI_PROJECT_ENDPOINT}"',
             )
 
-            # Update deployment to discovered one (if any)
-            discovered_deployment = foundry_config.get("deployment", "")
-            if discovered_deployment:
+            # Convert baseline target to azure_ai_model for both local and remote execution
+            discovered_deployment = foundry_config.get("deployment", "") or "gpt-4"
+            config_text = config_text.replace(
+                '    - name: "baseline"\n'
+                '      args:\n'
+                '        - temperature: [0.7]\n'
+                '        - max_tokens: [1000]\n'
+                '        - connection_name: ["default"]',
+                '    - name: "baseline"\n'
+                '      type: "azure_ai_model"\n'
+                '      connection_name: "default"\n'
+                f'      deployment_name: "{discovered_deployment}"\n'
+                '      args:\n'
+                '        - temperature: [0.7]\n'
+                '        - max_tokens: [1000]',
+            )
+
+            # Update connection deployment to discovered one (if any)
+            if discovered_deployment and discovered_deployment != "gpt-4":
                 config_text = config_text.replace(
                     'deployment: "gpt-4"',
                     f'deployment: "{discovered_deployment}"',

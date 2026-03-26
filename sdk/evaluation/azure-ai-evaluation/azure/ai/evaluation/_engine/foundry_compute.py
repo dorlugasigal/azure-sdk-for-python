@@ -130,23 +130,44 @@ def _build_portal_url(endpoint: str, eval_id: str) -> Optional[str]:
     return None
 
 
+def _normalize_endpoint(endpoint: str) -> str:
+    """Normalize a Foundry endpoint to the format required by AIProjectClient.
+
+    Handles two transformations:
+    1. Legacy ``cognitiveservices.azure.com`` → ``services.ai.azure.com``
+    2. Ensures endpoint does NOT have a trailing slash (clean base URL).
+    """
+    import re
+
+    endpoint = endpoint.rstrip("/")
+
+    if ".cognitiveservices.azure.com" in endpoint:
+        m = re.match(r"https://([^.]+)\.cognitiveservices\.azure\.com(.*)", endpoint)
+        if m:
+            account = m.group(1)
+            path = m.group(2)  # preserve any /api/projects/... path
+            endpoint = f"https://{account}.services.ai.azure.com{path}"
+
+    return endpoint
+
+
 def _resolve_project_endpoint(
     config: Config,
     project_endpoint: Optional[str],
 ) -> str:
     """Determine the Foundry project endpoint from params or config."""
     if project_endpoint:
-        return project_endpoint
+        return _normalize_endpoint(project_endpoint)
 
     compute = config.experiment.compute
     if compute and compute.azure_ai_project:
-        return compute.azure_ai_project
+        return _normalize_endpoint(compute.azure_ai_project)
 
     # Search connections for a project endpoint
     for conn in config.experiment.connections or []:
         endpoint = getattr(conn, "azure_ai_project", None) or getattr(conn, "endpoint", None)
         if endpoint:
-            return endpoint
+            return _normalize_endpoint(endpoint)
 
     raise ValueError(
         "No Foundry project endpoint found. Provide 'project_endpoint', set "
@@ -221,7 +242,10 @@ def _build_testing_criteria(
             if criteria_entry is None:
                 raise ValueError(
                     f"Evaluator '{evaluator_config.name}' is not a built-in evaluator and "
-                    f"could not be uploaded as a custom evaluator."
+                    f"could not be uploaded as a custom evaluator. "
+                    f"To run remotely, use only built-in evaluators: "
+                    f"{', '.join(sorted(EVALUATOR_TO_BUILTIN.keys()))}. "
+                    f"Or run locally with: ev run"
                 )
         else:
             raise ValueError(
@@ -298,7 +322,8 @@ def _build_grade_code(
     grade_code = (
         f"def grade(sample: dict, item: dict) -> float:\n"
         f'    """Auto-generated from @metric(\'{evaluator_name}\')."""\n'
-        f"    # Try all possible locations where data might be\n"
+        f"    try:\n"
+        f"        # Try all possible locations where data might be\n"
     )
 
     for param in compute_args:
@@ -308,25 +333,32 @@ def _build_grade_code(
                 field = s.split(".", 1)[1] if "." in s else s
                 break
         grade_code += (
-            f"    {param} = (\n"
-            f"        item.get(\"{param}\", \"\") or\n"
-            f"        item.get(\"{field}\", \"\") or\n"
-            f"        (item.get(\"sample\", {{}}) or {{}}).get(\"output_text\", \"\") or\n"
-            f"        (sample.get(\"output_text\", \"\") if sample else \"\")\n"
-            f"    )\n"
+            f"        {param} = (\n"
+            f"            item.get(\"{param}\", \"\") or\n"
+            f"            item.get(\"{field}\", \"\") or\n"
+            f"            item.get(\"sample.output_text\", \"\") or\n"
+            f"            (item.get(\"sample\", {{}}) or {{}}).get(\"output_text\", \"\") or\n"
+            f"            (sample.get(\"output_text\", \"\") if sample else \"\")\n"
+            f"        )\n"
         )
 
     grade_code += (
         f"\n"
-        f"    result = _compute({args_str})\n"
+        f"        result = _compute({args_str})\n"
         f"\n"
-        f"    if isinstance(result, (int, float)):\n"
-        f"        return float(min(max(result, 0.0), 1.0))\n"
-        f"    if isinstance(result, dict):\n"
-        f"        for key, val in result.items():\n"
-        f"            if isinstance(val, (int, float)):\n"
-        f"                return float(min(max(val, 0.0), 1.0))\n"
-        f"    return 0.0\n"
+        f"        if isinstance(result, (int, float)):\n"
+        f"            return float(result)\n"
+        f"        if isinstance(result, dict):\n"
+        f"            for key, val in result.items():\n"
+        f"                if isinstance(val, (int, float)):\n"
+        f"                    return float(val)\n"
+        f"        return 0.0\n"
+        f"    except Exception as _exc:\n"
+        f"        raise ValueError(\n"
+        f"            f\"Grading failed for '{evaluator_name}': {{_exc}}. \"\n"
+        f"            f\"sample keys={{list(sample.keys()) if sample else []}}, \"\n"
+        f"            f\"item keys={{list(item.keys()) if item else []}}\"\n"
+        f"        ) from _exc\n"
     )
 
     return compute_source + "\n\n" + grade_code
@@ -398,8 +430,6 @@ def _upload_custom_metric(
                         "result": {
                             "type": "continuous",
                             "desirable_direction": "increase",
-                            "min_value": 0.0,
-                            "max_value": 1.0,
                         }
                     },
                     "data_schema": {

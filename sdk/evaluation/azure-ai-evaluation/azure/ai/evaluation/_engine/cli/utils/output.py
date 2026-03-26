@@ -83,6 +83,11 @@ def show_results_table(results: Dict[str, Any]) -> None:
         table.add_row("Variants", str(models_evaluated))
         if failed:
             table.add_row("Failed", f"[red]{failed}[/red]")
+        first_error = results.get("first_error")
+        if first_error:
+            # Truncate long errors for table display
+            err_display = first_error if len(first_error) < 120 else first_error[:120] + "..."
+            table.add_row("Error", f"[red]{err_display}[/red]")
         if output_path_str:
             table.add_row("Output", output_path_str)
 
@@ -106,6 +111,9 @@ def show_results_table(results: Dict[str, Any]) -> None:
         click.echo(f"  Variants:  {models_evaluated}")
         if failed:
             click.echo(f"  Failed:    {failed}")
+        first_error = results.get("first_error")
+        if first_error:
+            click.echo(f"  Error:     {first_error}")
         if output_path_str:
             click.echo(f"  Output:    {output_path_str}")
         for metric_name, value in aggregated.items():

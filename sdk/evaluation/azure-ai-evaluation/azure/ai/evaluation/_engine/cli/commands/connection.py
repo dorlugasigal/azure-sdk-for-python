@@ -318,7 +318,7 @@ def discover_connections(config):
     if not account or not resource_group:
         # Fall back to Foundry project discovery via az CLI
         echo("  No Foundry project configured in .env — discovering...")
-        from azure.ai.evaluation._engine.cli.commands.new import _az_run, _select_option
+        from ..utils.azure_discovery import az_run as _az_run, select_option as _select_option
 
         projects = _az_run([
             "resource", "list",

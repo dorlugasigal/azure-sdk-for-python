@@ -280,13 +280,19 @@ class ModelEvaluator:
                 elif not isinstance(conn, dict):
                     conn = {}
 
-                azure_endpoint = conn.get("azure_endpoint", "")
+                azure_endpoint = conn.get("azure_endpoint", "") or conn.get("endpoint", "")
 
                 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
                 from openai import OpenAI
 
+                # Use correct token audience based on endpoint domain
+                if ".services.ai.azure.com" in azure_endpoint:
+                    token_scope = "https://ai.azure.com/.default"
+                else:
+                    token_scope = "https://cognitiveservices.azure.com/.default"
+
                 token_provider = get_bearer_token_provider(
-                    DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+                    DefaultAzureCredential(), token_scope
                 )
 
                 base_url = azure_endpoint.rstrip("/")
@@ -317,7 +323,7 @@ class ModelEvaluator:
                 )
 
                 answer = response.choices[0].message.content
-                return {"answer": answer}
+                return {"response": answer}
 
         AzureAIModelTarget.__name__ = f"AzureAIModel_{target_cfg.name}"
         return AzureAIModelTarget
@@ -664,11 +670,12 @@ class ModelEvaluator:
         total_models = len(self.targets_registry)
         total_records = len(dataset) * total_models
         failed_records = 0
+        first_error_msg = None
 
         max_workers = self.config.experiment.max_workers or 4
 
         if total_models > 1:
-            failed_records = self._evaluate_all_parallel(dataset, max_workers)
+            failed_records, first_error_msg = self._evaluate_all_parallel(dataset, max_workers)
         else:
             for model_name, model_data in self.targets_registry.items():
                 output_path = self._current_experiment_dir / f"{model_name}_results.jsonl"
@@ -698,6 +705,8 @@ class ModelEvaluator:
             "models_evaluated": total_models,
             "aggregated_evaluators": all_aggregated,
         }
+        if first_error_msg:
+            summary["first_error"] = first_error_msg
 
         # Clean up OTel trace capture
         if self._trace_capture is not None:
@@ -711,6 +720,7 @@ class ModelEvaluator:
 
         records = list(dataset)  # materialize once for all variants
         total_failed = 0
+        first_error = None
         lock = threading.Lock()
 
         # Prepare per-variant work items
@@ -741,7 +751,7 @@ class ModelEvaluator:
 
                 def _run_variant(model_name, model_data, output_path):
                     """Run a single variant, updating its progress task."""
-                    nonlocal total_failed
+                    nonlocal total_failed, first_error
                     model_instance = model_data["model"]
                     model_args = model_data["args"]
                     model_config_name = model_data["config"].name
@@ -765,13 +775,21 @@ class ModelEvaluator:
                                 try:
                                     eval_output = future.result()
                                     self._save_result(eval_output, output_path)
-                                except Exception:
+                                except Exception as e:
                                     variant_failed += 1
+                                    logger.error("Record evaluation failed: %s", e)
+                                    with lock:
+                                        if first_error is None:
+                                            first_error = str(e)
                                 progress.advance(tasks[model_name])
 
                         self._aggregate_and_save_evaluators(output_path, model_name)
-                    except Exception:
+                    except Exception as e:
                         variant_failed = len(records)
+                        logger.error("Variant '%s' failed: %s", model_name, e)
+                        with lock:
+                            if first_error is None:
+                                first_error = str(e)
 
                     with lock:
                         total_failed += variant_failed
@@ -795,7 +813,7 @@ class ModelEvaluator:
                 failed = self._evaluate_model(dataset, model_name, model_data, output_path, max_workers)
                 total_failed += failed
 
-        return total_failed
+        return total_failed, first_error
 
     def _evaluate_model(
         self,
@@ -909,10 +927,11 @@ class ModelEvaluator:
                     if inferred:
                         model_output["tool_definitions"] = inferred
 
-                # Fallback: minimal output_items from answer text
-                if "output_items" not in model_output and "answer" in model_output:
+                # Fallback: minimal output_items from response/answer text
+                _response_text = model_output.get("response") or model_output.get("answer")
+                if "output_items" not in model_output and _response_text:
                     model_output["output_items"] = [
-                        {"role": "assistant", "content": [{"type": "text", "text": str(model_output["answer"])}]}
+                        {"role": "assistant", "content": [{"type": "text", "text": str(_response_text)}]}
                     ]
 
                 # Prepend user query for evaluator conversation parser
@@ -925,7 +944,7 @@ class ModelEvaluator:
 
                     # Ensure the final text answer is in output_items
                     # (OTel may miss the last response due to timing)
-                    answer = model_output.get("answer", "")
+                    answer = model_output.get("response") or model_output.get("answer", "")
                     if answer and items:
                         last = items[-1]
                         last_has_text = (
@@ -1012,8 +1031,9 @@ class ModelEvaluator:
                 try:
                     eval_output = future.result()
                     self._save_result(eval_output, output_path)
-                except Exception:
+                except Exception as e:
                     failed_count += 1
+                    logger.error("Record evaluation failed: %s", e)
                 tracker.advance()
             tracker.finish_target()
         return failed_count

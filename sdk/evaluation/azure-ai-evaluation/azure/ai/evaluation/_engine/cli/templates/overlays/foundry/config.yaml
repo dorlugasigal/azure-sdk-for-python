@@ -4,16 +4,18 @@ experiment:
   description: "{description}"
   output_path: "output"
 
-  compute_backend:
+  compute:
     type: "foundry"
     azure_ai_project: "${AZURE_AI_PROJECT_ENDPOINT}"
 
   targets:
     - name: "baseline"
+      type: "azure_ai_model"
+      connection_name: "default"
+      deployment_name: "gpt-4"
       args:
         - temperature: [0.7]
         - max_tokens: [1000]
-        - connection_name: ["default"]
 
   dataset:
     name: "{project_name}_dataset"
@@ -23,9 +25,12 @@ experiment:
       data_path: "data/sample_dataset.jsonl"
 
   evaluators:
+    # Custom evaluator — defined in evaluators/word_count.py
     - name: "word_count"
       mapping:
         response: "target.response"
+
+    # Built-in evaluator — compares target response against ground truth
     - name: "f1_score"
       mapping:
         response: "target.response"

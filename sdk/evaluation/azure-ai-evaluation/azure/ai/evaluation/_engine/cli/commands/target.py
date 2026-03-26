@@ -108,40 +108,9 @@ def add_target_to_config(
 @click.group(invoke_without_command=True)
 @click.pass_context
 def target_cmd(ctx):
-    """Manage evaluation targets — add, list, or show discovered targets."""
+    """Manage evaluation targets — add or list configured and discovered targets."""
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
-
-
-@target_cmd.command()
-@click.argument("name", required=False)
-@click.help_option("--help", "-h")
-def show(name):
-    """Show target information or list discovered targets."""
-    _HAS_RICH = has_rich()
-
-    cwd = os.getcwd()
-    if cwd not in sys.path:
-        sys.path.insert(0, cwd)
-    import_local_components(cwd)
-    found = discover_project_components()
-
-    if name:
-        if name in found["targets"]:
-            echo(
-                f"[bold green]✓[/bold green] Target '{name}' is registered."
-                if _HAS_RICH
-                else f"Target '{name}' is registered."
-            )
-        else:
-            echo_error(f"Target '{name}' not found. Available: {', '.join(found['targets']) or '(none)'}")
-            sys.exit(1)
-    else:
-        if found["targets"]:
-            for m in found["targets"]:
-                echo(f"  {m}")
-        else:
-            echo("No targets discovered. Add a @target decorated class to your project.")
 
 
 @target_cmd.command()
@@ -207,6 +176,7 @@ def add(name, target_type, config, force):
 
 
 @target_cmd.command(name="list")
+@click.argument("name", required=False)
 @click.option(
     "--config",
     "-c",
@@ -216,41 +186,133 @@ def add(name, target_type, config, force):
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed target information.")
 @click.help_option("--help", "-h")
-def list_targets(config, verbose):
-    """List all targets configured in the project."""
+def list_targets(name, config, verbose):
+    """List configured and discovered targets, or show details for a specific target.
+
+    Without a name, displays both configured targets (from the config YAML)
+    and discovered targets (from @target decorated classes).
+
+    With a name, shows detailed information for that specific target.
+
+    Examples:\n
+      ev target list\n
+      ev target list my_target\n
+      ev target list --verbose\n
+      ev target list --config path/to/config.yaml
+    """
     _HAS_RICH = has_rich()
+
+    # --- Read configured targets from YAML -----------------------------------
     config = resolve_config_path(config)
     config_path = Path(config)
+    config_exists = config_path.exists()
+    configured_targets = read_targets_from_config(config_path) if config_exists else []
+    configured_names = {t.get("name") for t in configured_targets if isinstance(t, dict)}
 
-    if not config_path.exists():
-        echo_error(f"Config file not found: {config_path}")
-        echo("Make sure you're in the project directory or use --config to specify the path.")
-        raise click.Abort()
+    # --- Discover decorated targets ------------------------------------------
+    cwd = os.getcwd()
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
+    import_local_components(cwd)
+    found = discover_project_components()
+    discovered_names: List[str] = found.get("targets", [])
 
-    targets = read_targets_from_config(config_path)
+    # ---- Single-target detail mode ------------------------------------------
+    if name:
+        in_config = name in configured_names
+        in_discovered = name in discovered_names
 
-    if not targets:
-        echo("No targets configured in your project.")
-        echo("\nAdd a target with:")
-        echo("  ev target add --name my_target")
+        if not in_config and not in_discovered:
+            echo_error(f"Target '{name}' not found in config or decorator registry.")
+            all_names = sorted(configured_names | set(discovered_names))
+            if all_names:
+                echo(f"Available targets: {', '.join(all_names)}")
+            sys.exit(1)
+
+        if in_config:
+            cfg = next(t for t in configured_targets if t.get("name") == name)
+            echo(
+                f"\n[bold cyan]Configured Target:[/bold cyan] [green]{name}[/green]"
+                if _HAS_RICH
+                else f"\nConfigured Target: {name}"
+            )
+            for key, value in cfg.items():
+                if key != "name":
+                    echo(f"  {key}: {value}")
+
+        if in_discovered:
+            echo(
+                f"[bold green]✓[/bold green] Target '{name}' is registered (discovered via @target decorator)."
+                if _HAS_RICH
+                else f"✓ Target '{name}' is registered (discovered via @target decorator)."
+            )
+
+        if in_config and not in_discovered:
+            echo("\nNote: this target is configured but not discovered via decorators.")
+        elif not in_config and in_discovered:
+            echo("\nNote: this target is discovered via decorators but not in the config file.")
         return
 
-    echo(
-        f"\n[bold cyan]Configured Targets ({len(targets)}):[/bold cyan]\n"
-        if _HAS_RICH
-        else f"\nConfigured Targets ({len(targets)}):\n"
-    )
+    # ---- Full list mode (no name given) -------------------------------------
+    has_any = bool(configured_targets) or bool(discovered_names)
 
-    for i, target_config in enumerate(targets, start=1):
-        t_name = target_config.get("name", "unknown")
-        if verbose:
-            echo(f"{i}. {t_name}" if not _HAS_RICH else f"{i}. [green]{t_name}[/green]")
-            for key, value in target_config.items():
-                if key != "name":
-                    echo(f"   {key}: {value}")
-            echo("")
-        else:
-            echo(f"{i}. {t_name}" if not _HAS_RICH else f"{i}. [green]{t_name}[/green]")
+    # Configured targets section
+    if configured_targets:
+        echo(
+            f"\n[bold cyan]Configured Targets ({len(configured_targets)}):[/bold cyan]\n"
+            if _HAS_RICH
+            else f"\nConfigured Targets ({len(configured_targets)}):\n"
+        )
+        for i, target_config in enumerate(configured_targets, start=1):
+            t_name = target_config.get("name", "unknown")
+            also_discovered = t_name in discovered_names
+            suffix = ""
+            if also_discovered:
+                suffix = (
+                    " [dim](also discovered)[/dim]" if _HAS_RICH else " (also discovered)"
+                )
+            if verbose:
+                echo(
+                    f"{i}. [green]{t_name}[/green]{suffix}"
+                    if _HAS_RICH
+                    else f"{i}. {t_name}{suffix}"
+                )
+                for key, value in target_config.items():
+                    if key != "name":
+                        echo(f"   {key}: {value}")
+                echo("")
+            else:
+                echo(
+                    f"{i}. [green]{t_name}[/green]{suffix}"
+                    if _HAS_RICH
+                    else f"{i}. {t_name}{suffix}"
+                )
+        if not verbose:
+            echo("\nUse --verbose to see full configuration details.")
+    elif config_exists:
+        echo("\nNo targets configured in your project config.")
+    else:
+        echo(f"\nConfig file not found: {config_path}")
 
-    if not verbose:
-        echo("\nUse --verbose to see full configuration details.")
+    # Discovered targets section
+    if discovered_names:
+        echo(
+            f"\n[bold cyan]Discovered Targets ({len(discovered_names)}):[/bold cyan]\n"
+            if _HAS_RICH
+            else f"\nDiscovered Targets ({len(discovered_names)}):\n"
+        )
+        for m in discovered_names:
+            also_configured = m in configured_names
+            suffix = ""
+            if also_configured:
+                suffix = (
+                    " [dim](also configured)[/dim]" if _HAS_RICH else " (also configured)"
+                )
+            echo(f"  {m}{suffix}")
+    else:
+        echo("\nNo targets discovered via @target decorators.")
+
+    if not has_any:
+        echo("\nGet started:")
+        echo("  • Add a target to your config:  ev target add --name my_target")
+        echo("  • Or add a @target decorated class to your project.")

@@ -182,6 +182,9 @@ class ExperimentConfig(BaseModel):
         # Backward compat: accept "metrics" as alias for "evaluators"
         if isinstance(values, dict) and "metrics" in values and "evaluators" not in values:
             values["evaluators"] = values.pop("metrics")
+        # Backward compat: accept "compute_backend" as alias for "compute"
+        if isinstance(values, dict) and "compute_backend" in values and "compute" not in values:
+            values["compute"] = values.pop("compute_backend")
         return values
 
 
