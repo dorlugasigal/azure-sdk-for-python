@@ -78,6 +78,22 @@ class EvaluatorConfig(BaseModel):
     display_name: Optional[str] = None
     mapping: Dict[str, str] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def validate_mapping_format(self) -> "EvaluatorConfig":
+        """Validate mapping values match 'target.X', 'model.X', or 'dataset.X' format."""
+        if self.mapping:
+            pattern = re.compile(r"^(target|model|dataset)\.[^.]+$")
+            for field, mapping_val in self.mapping.items():
+                if not pattern.match(mapping_val):
+                    raise ValueError(
+                        f"Invalid mapping '{mapping_val}' for field '{field}' in evaluator '{self.name}': "
+                        f"expected format 'target.X' or 'dataset.X'"
+                    )
+        return self
+
+
+_VALID_TARGET_TYPES = {"custom", "azure_ai_model", "azure_ai_agent"}
+
 
 class TargetVariantConfig(BaseModel):
     """Target configuration — supports custom, azure_ai_model, azure_ai_agent types."""
@@ -113,20 +129,15 @@ class TargetVariantConfig(BaseModel):
                 values["args"] = [args]
         return values
 
-
-# Backward compat alias
-ModelVariantConfig = TargetVariantConfig
-
-
-class TrackingBackendConfig(BaseModel):
-    """Tracking backend configuration."""
-
-    model_config = ConfigDict(extra="allow")
-
-    type: str = "none"  # "none" or "foundry"
-    # Foundry-specific settings (used when type="foundry")
-    azure_ai_project: Optional[str] = None
-    deployment_name: Optional[str] = None
+    @model_validator(mode="after")
+    def validate_target_type(self) -> "TargetVariantConfig":
+        """Validate target type is one of the supported types."""
+        if self.type not in _VALID_TARGET_TYPES:
+            raise ValueError(
+                f"Invalid target type '{self.type}' for target '{self.name}'. "
+                f"Supported types: {sorted(_VALID_TARGET_TYPES)}"
+            )
+        return self
 
 
 class ComputeConfig(BaseModel):
@@ -146,13 +157,12 @@ class ExperimentConfig(BaseModel):
     name: str
     version: str = "1.0"
     description: str = ""
-    output_path: str = "experiment/output"
+    output_path: str = "output"
     max_workers: Optional[int] = None
     targets: List[TargetVariantConfig] = Field(default_factory=list)
     dataset: Optional[DatasetConfig] = None
     evaluators: List[EvaluatorConfig] = Field(default_factory=list)
     compute: Optional[ComputeConfig] = None
-    tracking_backend: Optional[TrackingBackendConfig] = None
     connections: Any = Field(default_factory=list)
 
     @model_validator(mode="before")
@@ -201,6 +211,52 @@ class Config(BaseModel):
         """Convert to dictionary."""
         return self.model_dump()
 
+    def deep_validate(self) -> List[str]:
+        """Validate config against registered components.
 
-# Backward compat alias
-MetricConfig = EvaluatorConfig
+        Checks that referenced targets, evaluators, datasets, and connections
+        exist in their respective registries. Call after all components are
+        registered to catch configuration errors early.
+
+        :returns: List of validation error messages. Empty list means valid.
+        """
+        from .decorators import DATASET_REGISTRY, EVALUATOR_REGISTRY, TARGET_REGISTRY
+        from .dataset_factory import _ensure_builtin_datasets
+
+        _ensure_builtin_datasets()
+
+        errors: List[str] = []
+        exp = self.experiment
+
+        # Validate custom target names against registry
+        for target_cfg in exp.targets:
+            if target_cfg.type == "custom" and target_cfg.name not in TARGET_REGISTRY:
+                errors.append(f"Target '{target_cfg.name}' not found in registry")
+
+        # Validate evaluator names against registry
+        for eval_cfg in exp.evaluators:
+            if eval_cfg.name not in EVALUATOR_REGISTRY:
+                errors.append(f"Evaluator '{eval_cfg.name}' not found in registry")
+
+        # Validate dataset type against registry
+        if exp.dataset and exp.dataset.type not in DATASET_REGISTRY:
+            errors.append(f"Dataset type '{exp.dataset.type}' not found in registry")
+
+        # Validate connection references for non-custom targets
+        conn_names: set[str] = set()
+        for c in exp.connections:
+            if isinstance(c, ConnectionConfig):
+                conn_names.add(c.name)
+            elif isinstance(c, dict):
+                conn_names.add(c.get("name", ""))
+
+        for target_cfg in exp.targets:
+            if target_cfg.type != "custom" and target_cfg.connection_name not in conn_names:
+                errors.append(
+                    f"Target '{target_cfg.name}' references connection "
+                    f"'{target_cfg.connection_name}' which is not defined. "
+                    f"Available: {sorted(conn_names)}"
+                )
+
+        return errors
+

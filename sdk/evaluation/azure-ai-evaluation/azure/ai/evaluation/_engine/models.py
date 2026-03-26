@@ -15,7 +15,6 @@ class ExecutionContext:
     experiment_version: str = ""
     experiment_dir: Optional[Path] = None
     output_path: str = ""
-    tracking_enabled: bool = True
     model_variant_id: str = ""
 
 

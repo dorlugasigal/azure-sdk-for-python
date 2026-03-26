@@ -30,7 +30,7 @@ def evaluate_v2(
     )
 
     # Config-driven
-    evaluate_v2(config="evals.yaml")
+    evaluate_v2(config="config.yaml")
     """
     if config:
         # Direct config path — engine handles everything

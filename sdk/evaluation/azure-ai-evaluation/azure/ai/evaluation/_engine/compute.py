@@ -34,7 +34,6 @@ class RunContext:
     config_path: str
     env_path: Optional[str] = None
     dataset_path: Optional[str] = None
-    tracking_enabled: bool = True
     model_filter: Optional[List[str]] = None
 
 
@@ -63,14 +62,12 @@ class LocalComputeBackend(ComputeBackend):
                     evaluator = ModelEvaluator(
                         config_path=context.config_path,
                         model_filter=context.model_filter,
-                        tracking_enabled=context.tracking_enabled,
                     )
                     dataset = evaluator.load_dataset(dataset_path=context.dataset_path)
             except ImportError:
                 evaluator = ModelEvaluator(
                     config_path=context.config_path,
                     model_filter=context.model_filter,
-                    tracking_enabled=context.tracking_enabled,
                 )
                 dataset = evaluator.load_dataset(dataset_path=context.dataset_path)
 

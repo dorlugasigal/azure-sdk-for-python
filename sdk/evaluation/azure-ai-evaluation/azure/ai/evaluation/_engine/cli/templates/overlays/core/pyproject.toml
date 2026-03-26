@@ -1,0 +1,12 @@
+[project]
+name = "{project_name}"
+version = "0.1.0"
+description = "{description}"
+requires-python = "{python_requires}"
+
+dependencies = [
+    "{ev_dependency}",
+    "python-dotenv>=1.0.0",
+]
+
+{uv_sources_block}

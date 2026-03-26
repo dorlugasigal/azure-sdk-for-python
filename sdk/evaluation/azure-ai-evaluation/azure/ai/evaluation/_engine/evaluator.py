@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -10,23 +11,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .config import Config, DatasetConfig, EvaluatorConfig, TargetVariantConfig
+from .dataset_factory import DatasetFactory
 from .decorators import DATASET_REGISTRY, EVALUATOR_REGISTRY, TARGET_REGISTRY, BaseDataset, BaseTarget as EveeBaseTarget
 from .discovery import discover_components
+from .logging import setup_logger as _setup_logger
+from .metrics_aggregator import MetricsAggregator
 from .models import EvaluationOutput, ExecutionContext, InferenceOutput
 from .otel_trace_capture import OTelTraceCapture
-from .tracking import (
-    TrackingBackend,
-    create_tracking_backend,
-    OperationStatus,
-    ExperimentStartEvent,
-    ModelRunStartEvent,
-    ModelRunCompletedEvent,
-    InferenceStartEvent,
-    InferenceCompletedEvent,
-    ResultsAnalyzedEvent,
-    ArtifactGeneratedEvent,
-    ExperimentCompletedEvent,
-)
+from .progress_tracker import ProgressTracker
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_tool_definitions_from_trace(agent_trace) -> list:
@@ -161,7 +155,6 @@ class ModelEvaluator:
         config_path: str = "config.yaml",
         load_config_only: bool = False,
         model_filter: Optional[List[str]] = None,
-        tracking_enabled: bool = True,
     ) -> None:
         """Initialize evaluator.
 
@@ -169,7 +162,6 @@ class ModelEvaluator:
             config_path: Path to configuration YAML file
             load_config_only: Whether to only load configuration
             model_filter: Optional list of model names to evaluate
-            tracking_enabled: Whether to enable tracking backend
         """
         self.model_filter = model_filter
 
@@ -178,13 +170,6 @@ class ModelEvaluator:
 
         # Load config
         self.config = Config.from_yaml(config_path)
-
-        # Create tracking backend
-        self.tracking_backend: TrackingBackend = create_tracking_backend(
-            config=self.config,
-            tracking_enabled=tracking_enabled,
-        )
-        self.tracking_backend.on_startup()
 
         # Set up OTel trace capture — auto-enabled when OTel SDK is available
         self._trace_capture: Optional[OTelTraceCapture] = None
@@ -198,6 +183,9 @@ class ModelEvaluator:
         # Create output directory
         self._current_dir = Path.cwd()
         self._current_experiment_dir = self._create_experiment_dir()
+
+        # Set up structured logging with file handler in experiment directory
+        _setup_logger(__name__, logs_path=str(self._current_experiment_dir))
 
         # Register connections
         self.connections_registry: Dict[str, Any] = {}
@@ -216,7 +204,6 @@ class ModelEvaluator:
             experiment_version=self.config.experiment.version,
             experiment_dir=self._current_experiment_dir,
             output_path=self.config.experiment.output_path,
-            tracking_enabled=False,
         )
 
         # Register targets and evaluators
@@ -436,10 +423,9 @@ class ModelEvaluator:
                     result["output_items"] = [{"type": "text", "text": result["answer"]}]
 
                 # Warn about unresolved function calls requiring client-side execution
-                import logging as _log
                 for item in getattr(response, "output", []) or []:
                     if hasattr(item, 'type') and item.type == 'function_call':
-                        _log.getLogger(__name__).warning(
+                        logger.warning(
                             "Agent '%s' returned a function_call '%s' that was not executed. "
                             "Client-side function tool execution is not supported in local evaluation. "
                             "Use Foundry-managed tools or cloud evaluation instead.",
@@ -454,8 +440,6 @@ class ModelEvaluator:
 
     def _register_target(self, target_cfg: TargetVariantConfig) -> None:
         """Register a target with all argument combinations."""
-        import logging as _logging
-
         target_name = target_cfg.name
         target_type = getattr(target_cfg, "type", "custom")
 
@@ -546,18 +530,18 @@ class ModelEvaluator:
         return combinations
 
     def _create_passthrough_model(self, name: str) -> type:
-        """Create a passthrough model that returns dataset record as output."""
-        from .decorators import BaseModel as EveeBaseModel
+        """Create a passthrough target that returns dataset record as output."""
+        from .decorators import BaseTarget
 
-        class PassthroughModel(EveeBaseModel):
+        class PassthroughTarget(BaseTarget):
             def __init__(self, config: Optional[Dict[str, Any]] = None, context: Optional[Any] = None):
                 super().__init__(context)
 
             def infer(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
                 return input_data
 
-        PassthroughModel.__name__ = name
-        return PassthroughModel
+        PassthroughTarget.__name__ = name
+        return PassthroughTarget
 
     def _generate_variant_name(self, model_name: str, args: Dict[str, Any]) -> str:
         """Generate unique variant name."""
@@ -648,31 +632,21 @@ class ModelEvaluator:
     def load_dataset(
         self, dataset_config: Optional[DatasetConfig] = None, dataset_path: Optional[str] = None
     ) -> BaseDataset:
-        """Load dataset from configuration."""
+        """Load dataset from configuration.
+
+        Uses :class:`DatasetFactory` for type routing and path overrides.
+        """
         if dataset_config is None:
             dataset_config = self.config.experiment.dataset
             if dataset_config is None:
                 raise ValueError("Dataset configuration required")
 
-        dataset_name = dataset_config.name
-        dataset_type = dataset_config.type
-
-        dataset_class = DATASET_REGISTRY.get(dataset_type)
-        if not dataset_class:
-            raise ValueError(
-                f"Dataset type '{dataset_type}' not found in registry. "
-                f"Available: {list(DATASET_REGISTRY.keys())}"
-            )
-
-        # Prepare dataset config
-        config = dataset_config.model_dump()
-        if dataset_path is not None:
-            config["args"]["data_path"] = dataset_path
-
-        # Flatten args into config
-        config.update(config.get("args", {}))
-
-        return dataset_class(config, self.execution_context)
+        factory = DatasetFactory()
+        return factory.create_from_config(
+            dataset_config,
+            dataset_path_override=dataset_path,
+            context=self.execution_context,
+        )
 
     def evaluate(self, dataset: BaseDataset) -> Dict[str, Any]:
         """Evaluate all models on dataset.
@@ -684,16 +658,8 @@ class ModelEvaluator:
             Summary dictionary with results
         """
         # Suppress noisy non-fatal warnings from SDK evaluators and LangChain callbacks
-        import logging as _logging
         for _logger_name in ("langchain_core.callbacks.manager", "langchain_core.callbacks", "langchain_azure_ai"):
-            _logging.getLogger(_logger_name).setLevel(_logging.ERROR)
-
-        self.tracking_backend.on_experiment_started(
-            ExperimentStartEvent(
-                experiment_name=self.config.experiment.name,
-                config=self.config.to_dict(),
-            )
-        )
+            logging.getLogger(_logger_name).setLevel(logging.ERROR)
 
         total_models = len(self.targets_registry)
         total_records = len(dataset) * total_models
@@ -733,21 +699,9 @@ class ModelEvaluator:
             "aggregated_evaluators": all_aggregated,
         }
 
-        self.tracking_backend.on_experiment_completed(
-            ExperimentCompletedEvent(experiment_name=self.config.experiment.name)
-        )
-        self.tracking_backend.on_shutdown()
-
         # Clean up OTel trace capture
         if self._trace_capture is not None:
             self._trace_capture.shutdown()
-
-        # Include tracking info in summary
-        tracking_type = type(self.tracking_backend).__name__
-        if tracking_type != "NoOpFallbackBackend":
-            summary["tracking_backend"] = tracking_type
-            if hasattr(self.tracking_backend, "published_urls") and self.tracking_backend.published_urls:
-                summary["tracking_urls"] = list(self.tracking_backend.published_urls)
 
         return summary
 
@@ -793,9 +747,7 @@ class ModelEvaluator:
                     model_config_name = model_data["config"].name
 
                     run_name = f"run_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                    run_id = self.tracking_backend.start_run(
-                        ModelRunStartEvent(run_id=run_name, model_name=model_name)
-                    ) or run_name
+                    run_id = run_name
 
                     variant_failed = 0
                     try:
@@ -817,30 +769,14 @@ class ModelEvaluator:
                                     variant_failed += 1
                                 progress.advance(tasks[model_name])
 
-                        aggregated = self._aggregate_and_save_evaluators(output_path, model_name)
-                        self.tracking_backend.on_results_analyzed(
-                            ResultsAnalyzedEvent(run_id=run_id, metrics=aggregated)
-                        )
-                        self.tracking_backend.on_artifact_generated(
-                            ArtifactGeneratedEvent(run_id=run_id, artifact_path=output_path, artifact_type="jsonl")
-                        )
-                        summary_path = output_path.parent / f"{model_name}_summary.json"
-                        self.tracking_backend.on_artifact_generated(
-                            ArtifactGeneratedEvent(run_id=run_id, artifact_path=summary_path, artifact_type="json")
-                        )
-                        # Defer publishing to after progress display ends
-                        completed_runs.append((run_id, model_name))
-                    except Exception as e:
-                        self.tracking_backend.on_run_completed(
-                            ModelRunCompletedEvent(run_id=run_id, status=OperationStatus.FAILED, error=str(e))
-                        )
+                        self._aggregate_and_save_evaluators(output_path, model_name)
+                    except Exception:
                         variant_failed = len(records)
 
                     with lock:
                         total_failed += variant_failed
 
                 # Run all variants in parallel threads
-                completed_runs: list = []
                 threads = []
                 for model_name, model_data, output_path in variant_items:
                     t = threading.Thread(
@@ -852,34 +788,6 @@ class ModelEvaluator:
 
                 for t in threads:
                     t.join()
-
-            # Publish to tracking AFTER progress display ends (clean console output)
-            if completed_runs:
-                try:
-                    from rich.status import Status
-                    from rich.console import Console
-                    _con = Console()
-                    with Status(
-                        f"Publishing {len(completed_runs)} run(s) to Foundry...",
-                        console=_con,
-                        spinner="dots",
-                    ) as status:
-                        publish_threads = []
-                        for run_id, model_name in completed_runs:
-                            t = threading.Thread(
-                                target=self.tracking_backend.on_run_completed,
-                                args=(ModelRunCompletedEvent(run_id=run_id, status=OperationStatus.SUCCESS),),
-                            )
-                            t.start()
-                            publish_threads.append((t, model_name))
-                        for t, _ in publish_threads:
-                            t.join()
-                    _con.print(f"  [bold green]✓[/bold green] Published {len(completed_runs)} run(s) to Foundry")
-                except ImportError:
-                    for run_id, model_name in completed_runs:
-                        self.tracking_backend.on_run_completed(
-                            ModelRunCompletedEvent(run_id=run_id, status=OperationStatus.SUCCESS)
-                        )
 
         except ImportError:
             # No Rich — fall back to sequential
@@ -903,13 +811,7 @@ class ModelEvaluator:
         model_config_name = model_data["config"].name
 
         run_name = f"run_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-        # Start tracking run — use the full variant name (includes args like prompt=baseline)
-        run_id = self.tracking_backend.start_run(
-            ModelRunStartEvent(run_id=run_name, model_name=model_name)
-        )
-        if not run_id:
-            run_id = run_name
+        run_id = run_name
 
         failed_count = 0
 
@@ -934,37 +836,9 @@ class ModelEvaluator:
                 )
 
             # Aggregate evaluators
-            aggregated_metrics = self._aggregate_and_save_evaluators(output_path, model_name)
+            self._aggregate_and_save_evaluators(output_path, model_name)
 
-            self.tracking_backend.on_results_analyzed(
-                ResultsAnalyzedEvent(run_id=run_id, metrics=aggregated_metrics)
-            )
-            self.tracking_backend.on_artifact_generated(
-                ArtifactGeneratedEvent(
-                    run_id=run_id,
-                    artifact_path=output_path,
-                    artifact_type="jsonl",
-                )
-            )
-            summary_path = output_path.parent / f"{model_name}_summary.json"
-            self.tracking_backend.on_artifact_generated(
-                ArtifactGeneratedEvent(
-                    run_id=run_id,
-                    artifact_path=summary_path,
-                    artifact_type="json",
-                )
-            )
-            self.tracking_backend.on_run_completed(
-                ModelRunCompletedEvent(run_id=run_id, status=OperationStatus.SUCCESS)
-            )
-        except Exception as e:
-            self.tracking_backend.on_run_completed(
-                ModelRunCompletedEvent(
-                    run_id=run_id,
-                    status=OperationStatus.FAILED,
-                    error=str(e),
-                )
-            )
+        except Exception:
             raise
 
         return failed_count
@@ -980,13 +854,6 @@ class ModelEvaluator:
     ) -> EvaluationOutput:
         """Evaluate a single record."""
         record_id = str(hash(json.dumps(record, sort_keys=True, default=str)))[:12]
-
-        try:
-            self.tracking_backend.on_inference_started(
-                InferenceStartEvent(run_id=run_id, record_id=record_id, input_data=record)
-            )
-        except Exception:
-            pass  # tracking should never break evaluation
 
         start_time = time.perf_counter()
         agent_trace = None
@@ -1119,19 +986,6 @@ class ModelEvaluator:
                     "tool_call_count": len(agent_trace.tool_calls),
                 }
 
-            try:
-                self.tracking_backend.on_inference_completed(
-                    InferenceCompletedEvent(
-                        run_id=run_id,
-                        record_id=record_id,
-                        output_data={"output": model_output, "evaluators": evaluators},
-                        duration_ms=response_time_ms,
-                        status=OperationStatus.SUCCESS,
-                    )
-                )
-            except Exception:
-                pass  # tracking should never break evaluation
-
             return EvaluationOutput(
                 run_id=run_id,
                 inference_output=inference_output,
@@ -1141,18 +995,6 @@ class ModelEvaluator:
                 metadata={},
             )
         except Exception as e:
-            try:
-                self.tracking_backend.on_inference_completed(
-                    InferenceCompletedEvent(
-                        run_id=run_id,
-                        record_id=record_id,
-                        output_data={"error": str(e)},
-                        duration_ms=(time.perf_counter() - start_time) * 1000,
-                        status=OperationStatus.FAILED,
-                    )
-                )
-            except Exception:
-                pass  # tracking should never break evaluation
             raise
 
     def _collect_results_with_progress(
@@ -1162,40 +1004,18 @@ class ModelEvaluator:
         total: int,
         output_path: Path,
     ) -> int:
-        """Collect futures showing a Rich progress bar when available."""
+        """Collect futures showing a progress bar (Rich when available, logging fallback)."""
         failed_count = 0
-        try:
-            from rich.progress import (
-                Progress,
-                SpinnerColumn,
-                BarColumn,
-                TextColumn,
-                MofNCompleteColumn,
-                TimeElapsedColumn,
-            )
-
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold cyan]{task.description}"),
-                BarColumn(bar_width=30),
-                MofNCompleteColumn(),
-                TimeElapsedColumn(),
-            ) as progress:
-                task = progress.add_task(f"Evaluating {model_name}", total=total)
-                for future in as_completed(futures):
-                    try:
-                        eval_output = future.result()
-                        self._save_result(eval_output, output_path)
-                    except Exception:
-                        failed_count += 1
-                    progress.advance(task)
-        except ImportError:
+        with ProgressTracker(total_targets=1) as tracker:
+            tracker.begin_target(model_name, total_records=total)
             for future in as_completed(futures):
                 try:
                     eval_output = future.result()
                     self._save_result(eval_output, output_path)
                 except Exception:
                     failed_count += 1
+                tracker.advance()
+            tracker.finish_target()
         return failed_count
 
     def _save_result(self, eval_output: EvaluationOutput, output_path: Path) -> None:
@@ -1206,32 +1026,40 @@ class ModelEvaluator:
     def _aggregate_and_save_evaluators(self, results_path: Path, model_name: str) -> Dict[str, Any]:
         """Aggregate evaluator results and save summary.
 
+        Uses :class:`MetricsAggregator` for the core aggregation logic.
+
         Returns:
             Aggregated evaluators dictionary.
         """
         if not results_path.exists():
             return {}
 
-        # Load all results
-        results = []
-        with open(results_path) as f:
-            for line in f:
-                results.append(json.loads(line))
+        aggregator = MetricsAggregator(self.evaluators_registry)
+        analysis = aggregator.analyze_results(results_path)
 
-        # Aggregate evaluators
+        # Reconstruct per-evaluator breakdown from prefixed metrics
         aggregated: Dict[str, Any] = {}
-        for evaluator_name, evaluator_instance in self.evaluators_registry.items():
-            scores = [r.get("evaluators", r.get("metrics", {})).get(evaluator_name, {}) for r in results]
-            scores = [s for s in scores if "error" not in s]  # Filter errors
-
-            if scores:
-                try:
-                    aggregated[evaluator_name] = evaluator_instance.aggregate(scores)
-                except Exception:
-                    aggregated[evaluator_name] = {"error": "aggregation_failed"}
+        for evaluator_name in self.evaluators_registry:
+            prefix = f"{evaluator_name} - "
+            evaluator_values: Dict[str, Any] = {}
+            for key, value in analysis.aggregated_metrics.items():
+                if key.startswith(prefix):
+                    short_key = key[len(prefix):]
+                    if short_key == "Aggregation Failed":
+                        evaluator_values = {"error": "aggregation_failed"}
+                        break
+                    evaluator_values[short_key] = value
+            if evaluator_values:
+                aggregated[evaluator_name] = evaluator_values
 
         # Save summary
-        summary = {"model": model_name, "total_records": len(results), "aggregated_evaluators": aggregated, "aggregated_metrics": aggregated}
+        total_records = analysis.aggregated_metrics.get("number_of_records", 0)
+        summary = {
+            "model": model_name,
+            "total_records": total_records,
+            "aggregated_evaluators": aggregated,
+            "aggregated_metrics": aggregated,
+        }
 
         summary_path = results_path.parent / f"{model_name}_summary.json"
         with open(summary_path, "w") as f:

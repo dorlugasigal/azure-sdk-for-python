@@ -1,7 +1,6 @@
 """ExperimentRunner — orchestrates evaluation with compute + tracking separation."""
 from __future__ import annotations
 
-import logging
 import os
 from typing import Any, List, Optional
 
@@ -14,8 +13,9 @@ from .compute import (
     RunContext,
 )
 from .config import Config
+from .logging import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class ExperimentRunner:
@@ -24,9 +24,8 @@ class ExperimentRunner:
     Usage:
         runner = ExperimentRunner()
         job_info = runner.run(
-            config_path="evals.yaml",
+            config_path="config.yaml",
             remote_compute=False,
-            tracking_enabled=True,
         )
     """
 
@@ -36,7 +35,6 @@ class ExperimentRunner:
         env_path: Optional[str] = None,
         dataset_path: Optional[str] = None,
         remote_compute: bool = False,
-        tracking_enabled: bool = True,
         model_filter: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> JobInfo:
@@ -47,7 +45,6 @@ class ExperimentRunner:
             env_path: Optional path to .env file
             dataset_path: Optional override for dataset path
             remote_compute: If True, submit to configured remote compute backend
-            tracking_enabled: If True, enable tracking backend
             model_filter: Optional list of model names to evaluate
 
         Returns:
@@ -72,7 +69,6 @@ class ExperimentRunner:
             config_path=config_path,
             env_path=env_path,
             dataset_path=dataset_path,
-            tracking_enabled=tracking_enabled,
             model_filter=model_filter,
         )
 

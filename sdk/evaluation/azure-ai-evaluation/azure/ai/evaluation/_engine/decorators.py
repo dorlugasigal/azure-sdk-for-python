@@ -1,6 +1,7 @@
 """Decorators and base classes for metrics, targets, and datasets."""
 from __future__ import annotations
 
+import asyncio
 import inspect
 import re
 from abc import ABC, abstractmethod
@@ -17,30 +18,10 @@ EVALUATOR_REGISTRY: Dict[str, type] = {}
 TARGET_REGISTRY: Dict[str, type] = {}
 DATASET_REGISTRY: Dict[str, type] = {}
 
-# Backward compat alias
-MODEL_REGISTRY = TARGET_REGISTRY
 
-
-# Helper functions
-def _get_missing_params(signature: inspect.Signature, config: Dict[str, Any]) -> set:
-    """Get required parameters missing from config."""
-    ignore = ["connections_registry", "context"]
-    required = [
-        p
-        for p, info in signature.parameters.items()
-        if p not in ["self", "return", "args", "kwargs", *ignore]
-        and info.default == inspect.Parameter.empty
-        and info.kind != inspect.Parameter.VAR_KEYWORD
-    ]
-    return set(required) - set(config.keys())
-
-
-def _get_params_from_config(signature: inspect.Signature, config: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract parameters from config that exist in signature."""
-    config_params = set(config.keys())
-    method_params = set(signature.parameters.keys())
-    params = config_params.intersection(method_params)
-    return {param: config[param] for param in params}
+# Helper functions — imported from dedicated module (see decorator_helpers.py)
+from .decorator_helpers import get_missing_params as _get_missing_params
+from .decorator_helpers import get_params_from_config as _get_params_from_config
 
 
 # Base classes
@@ -65,9 +46,10 @@ class BaseEvaluator(ABC):
         ...
 
     def _get_mapped_fields(self, inference_output: InferenceOutput) -> Dict[str, Any]:
-        """Map fields from inference output to metric inputs."""
+        """Map fields from inference output to evaluator inputs."""
         data = inference_output.to_dict()
-        sources = {"model": data.get("output", {}), "dataset": data.get("record", {})}
+        output = data.get("output", {})
+        sources = {"model": output, "target": output, "dataset": data.get("record", {})}
 
         mapped_fields = {}
         for param, mapping in self.mapping.items():
@@ -93,6 +75,14 @@ class BaseTarget(ABC):
         """Perform inference on input."""
         ...
 
+    def close(self) -> None:
+        """Optional cleanup method. Override to release resources."""
+        pass
+
+    async def close_async(self) -> None:
+        """Async interface for cleanup."""
+        pass
+
     @staticmethod
     def get_connection(connections_registry: Optional[Dict[str, Any]], connection_name: str = "default") -> Dict[str, Any]:
         """Resolve a connection by name from the registry.
@@ -112,10 +102,6 @@ class BaseTarget(ABC):
         if hasattr(conn, "model_dump"):
             return conn.model_dump()
         return dict(conn) if conn else {}
-
-
-# Backward compat alias
-BaseModel = BaseTarget
 
 
 class BaseDataset(ABC):
@@ -157,12 +143,12 @@ def evaluator(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
 
                 # Validate mapping format if provided
                 if self.mapping:
-                    pattern = re.compile(r"^(model|dataset)\.[^\.]+$")
+                    pattern = re.compile(r"^(target|model|dataset)\.[^\.]+$")
                     for field, mapping_val in self.mapping.items():
                         if not pattern.match(mapping_val):
                             raise ValueError(
-                                f"Invalid mapping '{mapping_val}' for field '{field}' in metric '{self.name}': "
-                                f"expected format 'model.X' or 'dataset.X'"
+                                f"Invalid mapping '{mapping_val}' for field '{field}' in evaluator '{self.name}': "
+                                f"expected format 'target.X' or 'dataset.X'"
                             )
 
                 # Create inner metric instance — pass config values + extra kwargs
@@ -220,6 +206,9 @@ def target(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
         if target_name in TARGET_REGISTRY:
             raise ValueError(f"Target '{target_name}' already registered")
 
+        # Detect if the user's infer method is async
+        is_async = inspect.iscoroutinefunction(cls.infer)
+
         class TargetWrapper(BaseTarget):
             def __init__(self, config: Dict[str, Any], context: Optional[ExecutionContext] = None):
                 super().__init__(context)
@@ -236,10 +225,48 @@ def target(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
                     init_params["context"] = self.context
 
                 self.inner = cls(**init_params)
+                self._is_async = is_async
+                self._has_close = hasattr(cls, "close") and callable(cls.close)
+                self._close_is_async = self._has_close and inspect.iscoroutinefunction(cls.close)
 
             def infer(self, input: Dict[str, Any]) -> Dict[str, Any]:
-                """Delegate to inner target."""
+                """Sync interface — works for both sync and async targets.
+
+                - Sync targets: direct call
+                - Async targets: runs in new event loop via asyncio.run()
+                """
+                if self._is_async:
+                    return asyncio.run(self.inner.infer(input))
                 return self.inner.infer(input)
+
+            async def infer_async(self, input: Dict[str, Any]) -> Dict[str, Any]:
+                """Async interface — works for both sync and async targets.
+
+                - Async targets: direct await
+                - Sync targets: runs in thread pool executor to avoid blocking
+                """
+                if self._is_async:
+                    return await self.inner.infer(input)
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(None, self.inner.infer, input)
+
+            def close(self) -> None:
+                """Sync cleanup — handles both sync and async close methods."""
+                if not self._has_close:
+                    return
+                if self._close_is_async:
+                    asyncio.run(self.inner.close())
+                else:
+                    self.inner.close()
+
+            async def close_async(self) -> None:
+                """Async cleanup — handles both sync and async close methods."""
+                if not self._has_close:
+                    return
+                if self._close_is_async:
+                    await self.inner.close()
+                else:
+                    self.inner.close()
 
         TargetWrapper.__name__ = cls.__name__
         TargetWrapper.__doc__ = cls.__doc__
@@ -250,10 +277,6 @@ def target(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
         return cast(type[T], TargetWrapper)
 
     return decorator
-
-
-# Backward compat alias
-model = target
 
 
 def dataset(name: Optional[str] = None) -> Callable[[type[T]], type["BaseDataset"]]:
@@ -299,9 +322,3 @@ def dataset(name: Optional[str] = None) -> Callable[[type[T]], type["BaseDataset
         return DatasetWrapper  # type: ignore[return-value]
 
     return decorator
-
-
-# Backward compatibility aliases
-METRIC_REGISTRY = EVALUATOR_REGISTRY
-BaseMetric = BaseEvaluator
-metric = evaluator

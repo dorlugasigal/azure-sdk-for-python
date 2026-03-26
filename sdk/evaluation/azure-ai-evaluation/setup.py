@@ -55,6 +55,7 @@ setup(
     ],
     zip_safe=False,
     include_package_data=True,
+    py_modules=["ev_cli"],
     packages=find_packages(
         exclude=[
             "tests*",
@@ -101,7 +102,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "local-evals=azure.ai.evaluation.cli:main",
+            "ev=ev_cli:main",
         ],
     },
     package_data={

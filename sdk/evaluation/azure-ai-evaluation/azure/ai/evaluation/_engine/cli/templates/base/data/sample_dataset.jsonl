@@ -1,0 +1,3 @@
+{"question": "What is machine learning?", "ground_truth": "Machine learning is a subset of AI that enables systems to learn from data."}
+{"question": "What is deep learning?", "ground_truth": "Deep learning uses neural networks with multiple layers to learn representations of data."}
+{"question": "What is natural language processing?", "ground_truth": "NLP is a field of AI that focuses on the interaction between computers and human language."}

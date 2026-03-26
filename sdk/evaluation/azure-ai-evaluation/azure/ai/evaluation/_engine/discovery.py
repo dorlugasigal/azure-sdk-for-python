@@ -12,7 +12,7 @@ _IMPORTED_MODULES: Set[str] = set()
 
 
 def discover_components(force: bool = False) -> None:
-    """Discover and import all @metric, @model, @dataset decorated components.
+    """Discover and import all @evaluator, @target, @dataset decorated components.
 
     Scans the current working directory for Python modules containing these
     decorators and imports them to populate the registries.
@@ -25,18 +25,18 @@ def discover_components(force: bool = False) -> None:
     if not force and base_dir in _DISCOVERED_DIRECTORIES:
         return
 
-    from .decorators import DATASET_REGISTRY, METRIC_REGISTRY, TARGET_REGISTRY
+    from .decorators import DATASET_REGISTRY, EVALUATOR_REGISTRY, TARGET_REGISTRY
 
-    initial_models = len(TARGET_REGISTRY)
-    initial_metrics = len(METRIC_REGISTRY)
+    initial_targets = len(TARGET_REGISTRY)
+    initial_evaluators = len(EVALUATOR_REGISTRY)
     initial_datasets = len(DATASET_REGISTRY)
 
     _discover_in_directory(base_dir)
     _DISCOVERED_DIRECTORIES.add(base_dir)
 
     # Could add logging here if needed
-    models_found = len(TARGET_REGISTRY) - initial_models
-    metrics_found = len(METRIC_REGISTRY) - initial_metrics
+    targets_found = len(TARGET_REGISTRY) - initial_targets
+    evaluators_found = len(EVALUATOR_REGISTRY) - initial_evaluators
     datasets_found = len(DATASET_REGISTRY) - initial_datasets
 
 

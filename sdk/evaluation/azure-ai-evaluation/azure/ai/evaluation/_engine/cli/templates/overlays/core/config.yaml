@@ -1,0 +1,37 @@
+experiment:
+  name: "{project_name}"
+  version: "1.0"
+  description: "{description}"
+  output_path: "output"
+
+  targets:
+    - name: "baseline"
+      args:
+        - temperature: [0.7]
+        - max_tokens: [1000]
+        - connection_name: ["default"]
+
+  dataset:
+    name: "{project_name}_dataset"
+    type: "jsonl"
+    version: "1.0.0"
+    args:
+      data_path: "data/sample_dataset.jsonl"
+
+  evaluators:
+    # Custom evaluator — defined in evaluators/word_count.py
+    - name: "word_count"
+      mapping:
+        response: "target.response"
+
+    # Built-in evaluator — compares target response against ground truth
+    - name: "f1_score"
+      mapping:
+        response: "target.response"
+        ground_truth: "dataset.ground_truth"
+
+  connections:
+    - name: "default"
+      deployment: "gpt-4"
+      api_version: "2024-12-01-preview"
+      endpoint: "${AZURE_OPENAI_ENDPOINT}"

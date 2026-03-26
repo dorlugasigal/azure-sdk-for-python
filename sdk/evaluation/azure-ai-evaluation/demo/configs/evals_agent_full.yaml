@@ -1,9 +1,6 @@
 experiment:
   name: "agent-full-evaluation"
 
-  tracking_backend:
-    type: "none"
-
   targets:
     - name: "weather_agent_local_maf"        # MAF @target with tool execution
       type: "custom"

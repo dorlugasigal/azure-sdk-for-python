@@ -185,13 +185,13 @@ class F1ScoreEvaluator(EvaluatorBase):
 
 
 # === evee engine integration ===
-# Register this evaluator as an @metric for config-driven evaluation
+# Register this evaluator as an @evaluator for config-driven evaluation
 try:
-    from azure.ai.evaluation._engine.decorators import metric as _evee_metric, BaseMetric as _EveeBaseMetric
+    from azure.ai.evaluation._engine.decorators import evaluator as _ev_evaluator, BaseEvaluator as _EvBaseEvaluator
 
-    @_evee_metric(name='f1_score')
-    class _F1ScoreEveeMetric(_EveeBaseMetric):
-        """Bridge: real F1ScoreEvaluator registered as evee @metric."""
+    @_ev_evaluator(name='f1_score')
+    class _F1ScoreEvEvaluator(_EvBaseEvaluator):
+        """Bridge: real F1ScoreEvaluator registered as @evaluator."""
         def __init__(self, connections_registry=None, context=None, **kwargs):
             super().__init__(**kwargs)
             self._evaluator = F1ScoreEvaluator()

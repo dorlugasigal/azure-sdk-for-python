@@ -1,0 +1,38 @@
+experiment:
+  name: "{project_name}"
+  version: "1.0"
+  description: "{description}"
+  output_path: "output"
+
+  compute_backend:
+    type: "foundry"
+    azure_ai_project: "${AZURE_AI_PROJECT_ENDPOINT}"
+
+  targets:
+    - name: "baseline"
+      args:
+        - temperature: [0.7]
+        - max_tokens: [1000]
+        - connection_name: ["default"]
+
+  dataset:
+    name: "{project_name}_dataset"
+    type: "jsonl"
+    version: "1.0.0"
+    args:
+      data_path: "data/sample_dataset.jsonl"
+
+  evaluators:
+    - name: "word_count"
+      mapping:
+        response: "target.response"
+    - name: "f1_score"
+      mapping:
+        response: "target.response"
+        ground_truth: "dataset.ground_truth"
+
+  connections:
+    - name: "default"
+      deployment: "gpt-4"
+      api_version: "2024-12-01-preview"
+      endpoint: "${AZURE_AI_PROJECT_ENDPOINT}"

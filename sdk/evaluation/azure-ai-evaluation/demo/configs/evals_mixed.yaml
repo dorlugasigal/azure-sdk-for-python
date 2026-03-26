@@ -1,9 +1,6 @@
 experiment:
   name: "mixed-eval-demo"
 
-  tracking_backend:
-    type: "none"
-    
   compute:
     type: "foundry"
     azure_ai_project: "https://foundry-evee-ko9z2s7c.services.ai.azure.com/api/projects/foundry-project-evee-ko9z2s7c"

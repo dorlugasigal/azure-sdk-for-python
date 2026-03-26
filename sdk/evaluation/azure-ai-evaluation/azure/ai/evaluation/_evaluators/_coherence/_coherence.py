@@ -167,11 +167,11 @@ class CoherenceEvaluator(PromptyEvaluatorBase[Union[str, float]]):
 
 # === evee engine integration ===
 try:
-    from azure.ai.evaluation._engine.decorators import metric as _evee_metric, BaseMetric as _EveeBaseMetric
+    from azure.ai.evaluation._engine.decorators import evaluator as _ev_evaluator, BaseEvaluator as _EvBaseEvaluator
 
-    @_evee_metric(name='coherence')
-    class _CoherenceEveeMetric(_EveeBaseMetric):
-        """Bridge: real CoherenceEvaluator registered as evee @metric."""
+    @_ev_evaluator(name='coherence')
+    class _CoherenceEvEvaluator(_EvBaseEvaluator):
+        """Bridge: real CoherenceEvaluator registered as @evaluator."""
         def __init__(self, connections_registry=None, context=None, **kwargs):
             super().__init__(**kwargs)
             self._evaluator = None

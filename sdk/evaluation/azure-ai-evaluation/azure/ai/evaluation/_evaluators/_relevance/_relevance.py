@@ -249,11 +249,11 @@ class RelevanceEvaluator(PromptyEvaluatorBase):
 
 # === evee engine integration ===
 try:
-    from azure.ai.evaluation._engine.decorators import metric as _evee_metric, BaseMetric as _EveeBaseMetric
+    from azure.ai.evaluation._engine.decorators import evaluator as _ev_evaluator, BaseEvaluator as _EvBaseEvaluator
 
-    @_evee_metric(name='relevance')
-    class _RelevanceEveeMetric(_EveeBaseMetric):
-        """Bridge: real RelevanceEvaluator registered as evee @metric."""
+    @_ev_evaluator(name='relevance')
+    class _RelevanceEvEvaluator(_EvBaseEvaluator):
+        """Bridge: real RelevanceEvaluator registered as @evaluator."""
         def __init__(self, connections_registry=None, context=None, **kwargs):
             super().__init__(**kwargs)
             self._evaluator = None
