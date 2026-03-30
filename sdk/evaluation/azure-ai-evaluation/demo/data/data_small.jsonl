@@ -1,3 +1,0 @@
-{"question": "What is Azure AI Foundry?", "answer": "Azure AI Foundry is a unified platform for building, evaluating, and deploying AI applications.", "context": "Azure AI Foundry provides tools for model deployment, evaluation, and monitoring of AI solutions."}
-{"question": "How do I evaluate my AI agent?", "answer": "Use the azure-ai-evaluation SDK to run quality evaluations locally or in the cloud.", "context": "The SDK supports local and cloud evaluation modes with built-in quality evaluators."}
-{"question": "What is prompt engineering?", "answer": "Prompt engineering is the practice of designing inputs to get desired outputs from language models.", "context": "Effective prompts help language models generate more accurate and relevant responses."}

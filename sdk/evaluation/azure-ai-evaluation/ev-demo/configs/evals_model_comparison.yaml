@@ -1,0 +1,38 @@
+experiment:
+  name: "model-comparison"
+
+  compute:
+    type: "foundry"
+    azure_ai_project: "${AZURE_AI_PROJECT}"
+
+  targets:
+    - name: "model_compare"
+      type: "azure_ai_model"
+      deployment_name: ["gpt-4.1-mini", "gpt-4.1"]
+      connection_name: "default"
+      args:
+        - temperature: [0.3, 0.9]
+
+  dataset:
+    name: "qa_data"
+    type: "jsonl"
+    args:
+      data_path: "data/qa_data.jsonl"
+
+  evaluators:
+    - name: "relevance"
+      mapping:
+        query: "dataset.question"
+        response: "model.answer"
+    - name: "coherence"
+      mapping:
+        query: "dataset.question"
+        response: "model.answer"
+    - name: "conciseness"
+      mapping:
+        response: "model.answer"
+
+  connections:
+    default:
+      azure_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+      azure_deployment: "${AZURE_OPENAI_DEPLOYMENT}"

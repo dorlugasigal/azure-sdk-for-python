@@ -1,0 +1,20 @@
+experiment:
+  name: "custom-metric-demo"
+
+  dataset:
+    name: "qa_data"
+    type: "jsonl"
+    args:
+      data_path: "data/qa_data.jsonl"
+
+  evaluators:
+    - name: "f1_score"
+      mapping:
+        response: "dataset.answer"
+        ground_truth: "dataset.context"
+    - name: "answer_length"
+      mapping:
+        response: "dataset.answer"
+    - name: "conciseness"
+      mapping:
+        response: "dataset.answer"

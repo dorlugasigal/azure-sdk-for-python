@@ -1,0 +1,22 @@
+[project]
+name = "ev-demo"
+version = "0.1.0"
+description = "All-in-one demo project for local-evals"
+requires-python = ">=3.10"
+
+dependencies = [
+    "azure-ai-evaluation",
+    "python-dotenv>=1.0.0",
+    "agent-framework[azure-ai]>=1.0.0rc5",
+    "azure-ai-projects",
+    "openai",
+    "langchain-openai",
+    "langgraph",
+    "langchain-azure-ai",
+]
+
+[tool.uv]
+prerelease = "allow"
+
+[tool.uv.sources]
+azure-ai-evaluation = { path = "/Users/dorlugasigal/Projects/azure-sdk-for-python/sdk/evaluation/azure-ai-evaluation", editable = true }

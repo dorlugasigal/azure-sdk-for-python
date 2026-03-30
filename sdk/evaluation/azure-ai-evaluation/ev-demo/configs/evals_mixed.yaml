@@ -1,0 +1,27 @@
+experiment:
+  name: "mixed-eval-demo"
+
+  compute:
+    type: "foundry"
+    azure_ai_project: "${AZURE_AI_PROJECT}"
+
+  dataset:
+    name: "qa_data"
+    type: "jsonl"
+    args:
+      data_path: "data/qa_data.jsonl"
+
+  evaluators:
+    - name: "f1_score"
+      mapping:
+        response: "dataset.answer"
+        ground_truth: "dataset.context"
+    - name: "relevance"
+      mapping:
+        query: "dataset.question"
+        response: "dataset.answer"
+
+  connections:
+    default:
+      azure_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+      azure_deployment: "${AZURE_OPENAI_DEPLOYMENT}"
