@@ -2,7 +2,7 @@
 
 Demonstrates the simplified agent target pattern using LangGraph's
 create_react_agent — the proper way to build LangChain agents.
-The user just returns {"answer": text}, engine handles the rest via OTel.
+The user just returns {"response": text}, engine handles the rest via OTel.
 
 Install: pip install langchain-openai langgraph azure-identity
 """
@@ -98,4 +98,4 @@ class WeatherAgentLangChainTarget(BaseTarget):
 
         final = result["messages"][-1].content if hasattr(result["messages"][-1], "content") else str(result["messages"][-1])
 
-        return {"answer": final or ""}
+        return {"response": final or ""}

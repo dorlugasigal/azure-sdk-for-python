@@ -20,10 +20,10 @@ experiment:
     - name: "coherence"
       mapping:
         query: "dataset.query"
-        response: "model.answer"
+        response: "model.response"
     - name: "response_completeness"
       mapping:
-        response: "model.answer"
+        response: "model.response"
         query: "dataset.query"
 
     # Agent evaluators (conversation-based)

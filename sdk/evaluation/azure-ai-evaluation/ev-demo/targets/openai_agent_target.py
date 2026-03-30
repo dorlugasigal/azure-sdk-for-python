@@ -1,7 +1,7 @@
 """OpenAI SDK agent evaluation target.
 
 Demonstrates the simplified agent target pattern: the user writes normal
-OpenAI Responses API agent code and returns just {"answer": text}. The engine's
+OpenAI Responses API agent code and returns just {"response": text}. The engine's
 OTel tracing auto-captures all LLM calls, tool invocations, and messages.
 
 Install: pip install openai azure-identity azure-ai-projects
@@ -117,6 +117,6 @@ class WeatherAgentOpenAITarget(BaseTarget):
                 previous_response_id=response.id,
             )
 
-        # Just return the answer — engine handles the rest via OTel
-        return {"answer": response.output_text or "", "tool_definitions": TOOL_SCHEMAS}
+        # Just return the response — engine handles the rest via OTel
+        return {"response": response.output_text or "", "tool_definitions": TOOL_SCHEMAS}
 

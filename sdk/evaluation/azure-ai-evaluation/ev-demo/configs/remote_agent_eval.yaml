@@ -21,12 +21,12 @@ experiment:
     - name: "coherence"
       mapping:
         query: "dataset.query"
-        response: "model.answer"
+        response: "model.response"
 
     - name: "relevance"
       mapping:
         query: "dataset.query"
-        response: "model.answer"
+        response: "model.response"
 
     - name: "task_adherence"
       mapping:

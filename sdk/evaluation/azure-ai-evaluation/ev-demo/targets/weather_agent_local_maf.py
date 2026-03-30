@@ -1,7 +1,7 @@
 """Local agent evaluation target using Microsoft Agent Framework (MAF).
 
 Demonstrates the simplified agent target pattern: the user writes normal
-MAF agent code and returns just {"answer": text}. The engine's OTel tracing
+MAF agent code and returns just {"response": text}. The engine's OTel tracing
 auto-captures all LLM calls, tool invocations, and messages — evaluators
 get the full structured data without the user manually building it.
 
@@ -112,4 +112,4 @@ class WeatherAgentLocalTarget(BaseTarget):
 
         result = _run_async(self._agent.run(query))
 
-        return {"answer": result.text or ""}
+        return {"response": result.text or ""}

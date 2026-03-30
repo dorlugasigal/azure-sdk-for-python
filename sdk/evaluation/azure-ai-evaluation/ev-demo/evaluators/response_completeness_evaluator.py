@@ -102,7 +102,7 @@ class ResponseCompletenessMetric(BaseEvaluator):
     produce hedging/refusal responses. This metric catches those cases using
     rule-based heuristics — complementing LLM-based evaluators like coherence.
 
-    Works with both text responses (model.answer) and structured output
+    Works with both text responses (model.response) and structured output
     (model.output_items). Sandbox-compatible for Foundry cloud evaluation.
     """
 
@@ -110,7 +110,7 @@ class ResponseCompletenessMetric(BaseEvaluator):
         """Evaluate response completeness.
 
         Args:
-            response: Agent's text response (model.answer) or structured
+            response: Agent's text response (model.response) or structured
                 output (model.output_items as JSON string).
             query: The original user query (dataset.query).
         """

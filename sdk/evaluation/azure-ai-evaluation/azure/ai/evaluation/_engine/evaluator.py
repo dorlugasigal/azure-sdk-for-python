@@ -420,7 +420,7 @@ class ModelEvaluator:
                     ) from e
 
                 # Capture both plain text and structured output (includes tool calls)
-                result = {"answer": getattr(response, "output_text", "")}
+                result = {"response": getattr(response, "output_text", "")}
 
                 # Include structured output items for evaluators like task_adherence
                 try:
@@ -434,10 +434,10 @@ class ModelEvaluator:
                             else:
                                 output_items.append(str(item))
                     else:
-                        output_items = [{"type": "text", "text": result["answer"]}]
+                        output_items = [{"type": "text", "text": result["response"]}]
                     result["output_items"] = output_items
                 except (AttributeError, TypeError):
-                    result["output_items"] = [{"type": "text", "text": result["answer"]}]
+                    result["output_items"] = [{"type": "text", "text": result["response"]}]
 
                 # Warn about unresolved function calls requiring client-side execution
                 for item in getattr(response, "output", []) or []:
@@ -1099,7 +1099,7 @@ class ModelEvaluator:
             response_time_ms = (time.perf_counter() - start_time) * 1000
 
             # Auto-enrich output from OTel traces.
-            # Targets just return {"answer": text} — everything else comes from traces.
+            # Targets just return {"response": text} — everything else comes from traces.
             if isinstance(model_output, dict):
                 has_trace_data = (
                     agent_trace is not None
