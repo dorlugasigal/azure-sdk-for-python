@@ -23,14 +23,14 @@ experiment:
     - name: "relevance"
       mapping:
         query: "dataset.question"
-        response: "model.answer"
+        response: "model.response"
     - name: "coherence"
       mapping:
         query: "dataset.question"
-        response: "model.answer"
+        response: "model.response"
     - name: "conciseness"
       mapping:
-        response: "model.answer"
+        response: "model.response"
 
   connections:
     default:
