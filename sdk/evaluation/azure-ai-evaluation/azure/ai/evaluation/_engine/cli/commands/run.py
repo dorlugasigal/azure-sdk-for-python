@@ -37,6 +37,58 @@ def _set_plain_output(_ctx, _param, value):
         os.environ["EV_DISABLE_RICH_LOGGING"] = "true"
 
 
+def _configure_tracing(
+    trace: Optional[bool],
+    trace_endpoint: Optional[str],
+    trace_headers: Optional[str],
+) -> str:
+    """Configure OpenTelemetry tracing via environment variables.
+
+    Returns a short status string for CLI summary output.
+    """
+    # If endpoint or headers are provided, tracing is implicitly enabled.
+    trace_enabled = trace
+    if trace_enabled is None and (trace_endpoint or trace_headers):
+        trace_enabled = True
+
+    if trace_enabled is False:
+        os.environ["EVEE_DISABLE_TRACING"] = "true"
+        return "disabled"
+
+    if trace_enabled is not True:
+        return "auto"
+
+    os.environ.pop("EVEE_DISABLE_TRACING", None)
+
+    endpoint = (
+        trace_endpoint
+        or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+        or "http://localhost:4318"
+    )
+    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
+    os.environ.setdefault("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
+    os.environ.setdefault("OTEL_TRACES_EXPORTER", "otlp")
+    os.environ.setdefault("OTEL_LOGS_EXPORTER", "otlp")
+    os.environ.setdefault("OTEL_METRICS_EXPORTER", "none")
+    os.environ.setdefault("OTEL_SERVICE_NAME", "azure-ai-evaluation-ev")
+    os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "true")
+    if trace_headers:
+        os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = trace_headers
+
+    return f"enabled ({endpoint})"
+
+
+def _configure_output_path(output: Optional[str]) -> Optional[str]:
+    """Configure output path override for local evaluation artifacts."""
+    if not output:
+        os.environ.pop("EV_OUTPUT_PATH_OVERRIDE", None)
+        return None
+
+    output_path = os.path.abspath(output) if not os.path.isabs(output) else output
+    os.environ["EV_OUTPUT_PATH_OVERRIDE"] = output_path
+    return output_path
+
+
 @click.command()
 @click.option("--path", "-p", default=".", type=click.Path(exists=True), help="Working directory for the experiment")
 @click.option("--config", "-c", default=None, help="Path to config file (default: auto-detect)")
@@ -47,9 +99,25 @@ def _set_plain_output(_ctx, _param, value):
 @click.option("--auto-approve", "-y", is_flag=True, help="Skip confirmation prompts")
 @click.option("--output", "-o", default=None, help="Output path override")
 @click.option("--stream-remote-logs", is_flag=True, default=False, help="Stream logs from remote compute to terminal (only applies with --remote)")
+@click.option("--trace/--no-trace", default=None, help="Enable or disable OpenTelemetry tracing explicitly")
+@click.option("--trace-endpoint", default=None, help="OTLP HTTP endpoint (default when enabled: http://localhost:4318)")
+@click.option("--trace-headers", default=None, help="OTLP headers, e.g. 'Authorization=Bearer <token>'")
 @click.option("--plain", is_flag=True, expose_value=False, is_eager=True, callback=_set_plain_output, help="Disable ASCII art and Rich formatting. Uses plain log output.")
 @click.help_option("--help", "-h")
-def run(path, config, dataset_path, env, remote, models, auto_approve, output, stream_remote_logs):
+def run(
+    path,
+    config,
+    dataset_path,
+    env,
+    remote,
+    models,
+    auto_approve,
+    output,
+    stream_remote_logs,
+    trace,
+    trace_endpoint,
+    trace_headers,
+):
     """Run evaluation.
 
     By default, runs locally.
@@ -62,6 +130,7 @@ def run(path, config, dataset_path, env, remote, models, auto_approve, output, s
         ev run --remote --stream-remote-logs  # Stream remote logs to terminal
         ev run -c custom.yaml            # Custom config
         ev run -m target_a,target_b      # Filter targets
+        ev run --trace                   # Enable tracing to local OTLP collector
         ev run --plain                   # Disable Rich formatting
     """
     _console = get_console()
@@ -99,11 +168,18 @@ def run(path, config, dataset_path, env, remote, models, auto_approve, output, s
         if models:
             model_filter = [m.strip() for m in models.split(",") if m.strip()]
 
+        trace_status = _configure_tracing(
+            trace=trace,
+            trace_endpoint=trace_endpoint,
+            trace_headers=trace_headers,
+        )
+        output_override = _configure_output_path(output)
+
         # Load config for pre-run summary
         cfg = load_config_safe(config_path)
 
         compute_mode = "remote (Foundry)" if remote else "local"
-        metric_names = ", ".join(m.name for m in cfg.experiment.evaluators) if cfg else "—"
+        evaluator_names = ", ".join(m.name for m in cfg.experiment.evaluators) if cfg else "—"
         dataset_name = cfg.experiment.dataset.name if cfg else "—"
         experiment_name = cfg.experiment.name if cfg else "—"
 
@@ -111,9 +187,12 @@ def run(path, config, dataset_path, env, remote, models, auto_approve, output, s
             "Config": config,
             "Experiment": experiment_name,
             "Compute": compute_mode,
-            "Metrics": metric_names,
+            "Tracing": trace_status,
+            "Evaluators": evaluator_names,
             "Dataset": dataset_name,
         }
+        if output_override:
+            panel_info["Output"] = output_override
 
         show_panel(panel_info, title="ev run")
 

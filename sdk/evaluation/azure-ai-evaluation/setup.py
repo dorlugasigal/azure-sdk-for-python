@@ -92,6 +92,7 @@ setup(
         # breaking azure-monitor-opentelemetry-exporter 1.0.0b45. See https://github.com/Azure/azure-sdk-for-python/issues/44236
         "opentelemetry": [
             "opentelemetry-sdk>=1.17.0,<1.39.0",
+            "opentelemetry-exporter-otlp-proto-http>=1.17.0,<1.39.0",
             "azure-monitor-opentelemetry-exporter>=1.0.0b17",
             "opentelemetry-instrumentation-openai-v2>=2.0b0",
         ],

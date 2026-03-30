@@ -58,7 +58,7 @@ def view(port, no_browser):
     _console = get_console()
     _HAS_RICH = has_rich()
 
-    # Resolve output directory: try config, then new default, then legacy default
+    # Resolve output directory: try config, then default locations.
     output_dir = None
     for cfg_candidate in ("config.yaml", "evals.yaml", "experiment/config.yaml"):
         if os.path.exists(cfg_candidate):

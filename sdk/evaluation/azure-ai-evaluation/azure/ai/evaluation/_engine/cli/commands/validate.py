@@ -120,7 +120,7 @@ def validate(config, env, output_json):
 
         info: Dict[str, str] = {
             "Targets": str(len(cfg.experiment.targets)),
-            "Metrics": str(len(cfg.experiment.evaluators)),
+            "Evaluators": str(len(cfg.experiment.evaluators)),
             "Dataset": cfg.experiment.dataset.name if cfg.experiment.dataset else "—",
             "Output": getattr(cfg.experiment, "output_path", "output"),
         }

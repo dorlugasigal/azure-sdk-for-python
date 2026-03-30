@@ -47,6 +47,7 @@ class TestRunCommand:
         assert "Run evaluation" in result.output
         assert "--remote" in result.output
         assert "--models" in result.output
+        assert "--trace / --no-trace" in result.output
 
     def test_run_missing_config(self, cli_runner: click.testing.CliRunner, tmp_path):
         result = cli_runner.invoke(cli, ["run", "--path", str(tmp_path), "--config", "nonexistent.yaml"])
@@ -170,3 +171,164 @@ class TestRunCommand:
             "--config", valid_config.name, "-y",
         ])
         assert result.exit_code != 0
+
+    @patch("azure.ai.evaluation._engine.runner.ExperimentRunner")
+    @patch("azure.ai.evaluation._engine.compute.JobStatus")
+    @patch("azure.ai.evaluation._engine.cli.commands.run.load_config_safe")
+    @patch("azure.ai.evaluation._engine.cli.commands.run.import_local_components")
+    def test_run_trace_enabled_sets_otlp_env(
+        self,
+        mock_discover,
+        mock_load_cfg,
+        mock_status_cls,
+        mock_runner_cls,
+        cli_runner,
+        valid_config,
+        monkeypatch,
+    ):
+        evaluator = MagicMock()
+        evaluator.name = "relevance"
+        mock_cfg = MagicMock()
+        mock_cfg.experiment.name = "test-run"
+        mock_cfg.experiment.evaluators = [evaluator]
+        mock_cfg.experiment.dataset.name = "ds"
+        mock_load_cfg.return_value = mock_cfg
+
+        mock_job = MagicMock()
+        mock_job.status = mock_status_cls.COMPLETED
+        mock_job.metadata = {
+            "status": "completed",
+            "total_records": 3,
+            "models_evaluated": 1,
+            "execution_type": "local",
+            "aggregated_metrics": {},
+        }
+        mock_runner_cls.return_value.run.return_value = mock_job
+
+        monkeypatch.delenv("EVEE_DISABLE_TRACING", raising=False)
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                "--path",
+                str(valid_config.parent),
+                "--config",
+                valid_config.name,
+                "--trace",
+                "--trace-endpoint",
+                "http://localhost:4318",
+                "-y",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert os.environ.get("EVEE_DISABLE_TRACING") is None
+        assert os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") == "http://localhost:4318"
+        assert os.environ.get("OTEL_TRACES_EXPORTER") == "otlp"
+        assert os.environ.get("OTEL_LOGS_EXPORTER") == "otlp"
+
+    @patch("azure.ai.evaluation._engine.runner.ExperimentRunner")
+    @patch("azure.ai.evaluation._engine.compute.JobStatus")
+    @patch("azure.ai.evaluation._engine.cli.commands.run.load_config_safe")
+    @patch("azure.ai.evaluation._engine.cli.commands.run.import_local_components")
+    def test_run_no_trace_disables_tracing(
+        self,
+        mock_discover,
+        mock_load_cfg,
+        mock_status_cls,
+        mock_runner_cls,
+        cli_runner,
+        valid_config,
+        monkeypatch,
+    ):
+        evaluator = MagicMock()
+        evaluator.name = "relevance"
+        mock_cfg = MagicMock()
+        mock_cfg.experiment.name = "test-run"
+        mock_cfg.experiment.evaluators = [evaluator]
+        mock_cfg.experiment.dataset.name = "ds"
+        mock_load_cfg.return_value = mock_cfg
+
+        mock_job = MagicMock()
+        mock_job.status = mock_status_cls.COMPLETED
+        mock_job.metadata = {
+            "status": "completed",
+            "total_records": 3,
+            "models_evaluated": 1,
+            "execution_type": "local",
+            "aggregated_metrics": {},
+        }
+        mock_runner_cls.return_value.run.return_value = mock_job
+
+        monkeypatch.delenv("EVEE_DISABLE_TRACING", raising=False)
+
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                "--path",
+                str(valid_config.parent),
+                "--config",
+                valid_config.name,
+                "--no-trace",
+                "-y",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert os.environ.get("EVEE_DISABLE_TRACING") == "true"
+
+    @patch("azure.ai.evaluation._engine.runner.ExperimentRunner")
+    @patch("azure.ai.evaluation._engine.compute.JobStatus")
+    @patch("azure.ai.evaluation._engine.cli.commands.run.load_config_safe")
+    @patch("azure.ai.evaluation._engine.cli.commands.run.import_local_components")
+    def test_run_output_sets_override_env(
+        self,
+        mock_discover,
+        mock_load_cfg,
+        mock_status_cls,
+        mock_runner_cls,
+        cli_runner,
+        valid_config,
+        monkeypatch,
+    ):
+        evaluator = MagicMock()
+        evaluator.name = "relevance"
+        mock_cfg = MagicMock()
+        mock_cfg.experiment.name = "test-run"
+        mock_cfg.experiment.evaluators = [evaluator]
+        mock_cfg.experiment.dataset.name = "ds"
+        mock_load_cfg.return_value = mock_cfg
+
+        mock_job = MagicMock()
+        mock_job.status = mock_status_cls.COMPLETED
+        mock_job.metadata = {
+            "status": "completed",
+            "total_records": 3,
+            "models_evaluated": 1,
+            "execution_type": "local",
+            "aggregated_metrics": {},
+        }
+        mock_runner_cls.return_value.run.return_value = mock_job
+
+        monkeypatch.delenv("EV_OUTPUT_PATH_OVERRIDE", raising=False)
+        out_dir = valid_config.parent / "custom-output"
+
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                "--path",
+                str(valid_config.parent),
+                "--config",
+                valid_config.name,
+                "--output",
+                str(out_dir),
+                "-y",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert os.environ.get("EV_OUTPUT_PATH_OVERRIDE") == str(out_dir.resolve())

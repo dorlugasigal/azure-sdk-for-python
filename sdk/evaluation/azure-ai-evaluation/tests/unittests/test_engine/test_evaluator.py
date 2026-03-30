@@ -309,3 +309,49 @@ class TestEvaluationLoop:
 
         assert result["status"] == "completed_with_errors"
         assert result["failed_records"] > 0
+
+    def test_evaluate_persists_aitk_results(
+        self,
+        config_yaml_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("AITK_EVALS_JOBS_DIR", str(tmp_path / "aitk-jobs"))
+        evaluator = _build_evaluator(str(config_yaml_path), load_config_only=False)
+
+        dataset = [{"question": "hello"}]
+        result = evaluator.evaluate(dataset)
+
+        aitk_job_path = Path(result.get("aitk_job_path", ""))
+        assert aitk_job_path.exists()
+        assert aitk_job_path.parent == tmp_path / "aitk-jobs"
+        metadata = json.loads((aitk_job_path / "job-metadata.json").read_text())
+        # Extension contract: parseJobMetadata requires id, input, status
+        assert metadata["id"] == aitk_job_path.name
+        assert "input" in metadata
+        assert "evalName" in metadata["input"]
+        assert "dataset" in metadata["input"]
+        assert "evaluators" in metadata["input"]
+        assert metadata["input"].get("evalConfigFilePath")
+        assert Path(metadata["input"]["evalConfigFilePath"]).exists()
+        assert metadata["status"] == "completed"
+        assert "evalResultFilePath" in metadata
+        assert (aitk_job_path / "logs.txt").exists()
+        aitk_consolidated = json.loads((aitk_job_path / "results.json").read_text())
+        assert aitk_consolidated["evaluation_id"] == aitk_job_path.name
+        assert aitk_consolidated["run_id"] == aitk_job_path.name
+        assert aitk_consolidated["status"] == "completed"
+        assert "rows" in aitk_consolidated
+        assert "metrics" in aitk_consolidated
+        assert "report_url" in aitk_consolidated
+        assert "studio_url" in aitk_consolidated
+        # Sidebar tree: test-results/<experiment_name>.json must be a root-level array
+        sidebar_path_str = result.get('aitk_sidebar_path')
+        assert sidebar_path_str is not None, 'aitk_sidebar_path missing from summary'
+        sidebar_file = Path(sidebar_path_str)
+        assert sidebar_file.exists()
+        assert sidebar_file.parent.name == 'test-results'
+        sidebar_rows = json.loads(sidebar_file.read_text())
+        assert isinstance(sidebar_rows, list), 'test-results JSON must be a root-level array'
+        assert len(sidebar_rows) > 0

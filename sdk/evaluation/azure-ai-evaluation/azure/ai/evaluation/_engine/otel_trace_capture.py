@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -24,6 +25,52 @@ logger = logging.getLogger(__name__)
 
 # OTel evaluation event name per semconv
 EVALUATION_EVENT_NAME = "gen_ai.evaluation.result"
+PARENT_TARGET_SPAN_NAME = "ev.target.invoke"
+LEGACY_PARENT_TARGET_SPAN_NAME = "evee.target.invoke"
+
+
+def _parse_otlp_headers(raw_headers: str) -> Dict[str, str]:
+    """Parse OTLP headers from comma-separated key=value pairs."""
+    headers: Dict[str, str] = {}
+    for item in raw_headers.split(","):
+        chunk = item.strip()
+        if not chunk or "=" not in chunk:
+            continue
+        key, value = chunk.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key:
+            headers[key] = value
+    return headers
+
+
+def _resolve_otlp_endpoint() -> Optional[str]:
+    """Return OTLP endpoint from environment, if configured."""
+    return os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+
+
+def _trace_exporter_endpoint(base_endpoint: str) -> str:
+    """Normalize trace exporter endpoint for OTLP HTTP exporters."""
+    endpoint = base_endpoint.rstrip("/")
+    if endpoint.endswith("/v1/traces"):
+        return endpoint
+    if endpoint.endswith("/v1/logs"):
+        return endpoint[:-8] + "/v1/traces"
+    if "/v1/" in endpoint:
+        return endpoint
+    return endpoint + "/v1/traces"
+
+
+def _log_exporter_endpoint(base_endpoint: str) -> str:
+    """Normalize log exporter endpoint for OTLP HTTP exporters."""
+    endpoint = base_endpoint.rstrip("/")
+    if endpoint.endswith("/v1/logs"):
+        return endpoint
+    if endpoint.endswith("/v1/traces"):
+        return endpoint[:-10] + "/v1/logs"
+    if "/v1/" in endpoint:
+        return endpoint
+    return endpoint + "/v1/logs"
 
 
 @dataclass
@@ -431,12 +478,14 @@ class OTelTraceCapture:
             from opentelemetry import trace as otel_trace, _logs as otel_logs
             from opentelemetry.sdk.trace import TracerProvider
             from opentelemetry.sdk.trace.export import (
+                BatchSpanProcessor,
                 SimpleSpanProcessor,
                 SpanExporter,
                 SpanExportResult,
             )
             from opentelemetry.sdk._logs import LoggerProvider
             from opentelemetry.sdk._logs.export import (
+                BatchLogRecordProcessor,
                 SimpleLogRecordProcessor,
                 LogExporter,
                 LogExportResult,
@@ -469,10 +518,53 @@ class OTelTraceCapture:
         # Set up providers
         self._trace_provider = TracerProvider()
         self._trace_provider.add_span_processor(SimpleSpanProcessor(_SpanCollector()))
+
+        # Optional OTLP export for external trace viewers/collectors.
+        otlp_endpoint = _resolve_otlp_endpoint()
+        if otlp_endpoint:
+            otlp_headers = _parse_otlp_headers(os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", ""))
+            try:
+                from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+                self._trace_provider.add_span_processor(
+                    BatchSpanProcessor(
+                        OTLPSpanExporter(
+                            endpoint=_trace_exporter_endpoint(otlp_endpoint),
+                            headers=otlp_headers,
+                        )
+                    )
+                )
+            except ImportError:
+                logger.warning(
+                    "OTLP endpoint is configured but OTLP trace exporter package is missing. "
+                    "Install opentelemetry-exporter-otlp-proto-http to enable export."
+                )
+
         otel_trace.set_tracer_provider(self._trace_provider)
 
         self._log_provider = LoggerProvider()
         self._log_provider.add_log_record_processor(SimpleLogRecordProcessor(_LogCollector()))
+
+        if otlp_endpoint:
+            otlp_headers = _parse_otlp_headers(os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", ""))
+            try:
+                from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+
+                self._log_provider.add_log_record_processor(
+                    BatchLogRecordProcessor(
+                        OTLPLogExporter(
+                            endpoint=_log_exporter_endpoint(otlp_endpoint),
+                            headers=otlp_headers,
+                        )
+                    )
+                )
+                logger.info("OTel trace capture: OTLP export enabled (%s)", otlp_endpoint)
+            except ImportError:
+                logger.warning(
+                    "OTLP endpoint is configured but OTLP log exporter package is missing. "
+                    "Install opentelemetry-exporter-otlp-proto-http to enable export."
+                )
+
         otel_logs.set_logger_provider(self._log_provider)
 
         # Auto-instrument OpenAI SDK (chat.completions.create)
@@ -559,7 +651,7 @@ class OTelTraceCapture:
 
         # Run target within a parent span
         with self._tracer.start_as_current_span(
-            "evee.target.invoke",
+            PARENT_TARGET_SPAN_NAME,
             attributes={
                 "evee.target.name": model_name,
                 "evee.record.id": record_id,
@@ -655,8 +747,8 @@ class OTelTraceCapture:
                     format(span.parent.span_id, "016x") if span.parent else None
                 )
 
-                # Skip the parent "evee.target.invoke" span itself
-                if span.name == "evee.target.invoke":
+                # Skip the synthetic parent wrapper span itself.
+                if span.name in {PARENT_TARGET_SPAN_NAME, LEGACY_PARENT_TARGET_SPAN_NAME}:
                     continue
 
                 captured = CapturedSpan(
