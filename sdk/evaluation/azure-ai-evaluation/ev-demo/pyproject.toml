@@ -19,4 +19,4 @@ dependencies = [
 prerelease = "allow"
 
 [tool.uv.sources]
-azure-ai-evaluation = { path = "/Users/dorlugasigal/Projects/azure-sdk-for-python/sdk/evaluation/azure-ai-evaluation", editable = true }
+azure-ai-evaluation = { path = "..", editable = true }
