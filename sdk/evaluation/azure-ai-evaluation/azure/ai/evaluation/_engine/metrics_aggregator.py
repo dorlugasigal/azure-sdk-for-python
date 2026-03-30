@@ -103,7 +103,7 @@ class MetricsAggregator:
                     # Collect per-evaluator scores (engine emits both "evaluators" and "metrics")
                     evaluators_dict = record.get("evaluators", record.get("metrics", {}))
                     for evaluator_name, scores in evaluators_dict.items():
-                        if scores is None:
+                        if scores is None or (isinstance(scores, dict) and "error" in scores):
                             evaluator_failures[evaluator_name] += 1
                             continue
                         evaluator_scores[evaluator_name].append(scores)
