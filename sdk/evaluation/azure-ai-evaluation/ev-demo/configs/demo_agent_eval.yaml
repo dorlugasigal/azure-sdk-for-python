@@ -41,11 +41,3 @@ experiment:
     - name: "response_completeness"
       mapping:
         response: "target.response"
-
-  connections:
-    default:
-      azure_endpoint: "${AZURE_OPENAI_ENDPOINT}"
-      azure_ai_project: "${AZURE_AI_PROJECT}"
-    custom_db:
-      endpoint: "${CUSTOM_SERVICE_ENDPOINT}"
-      api_key: "${CUSTOM_SERVICE_KEY}"

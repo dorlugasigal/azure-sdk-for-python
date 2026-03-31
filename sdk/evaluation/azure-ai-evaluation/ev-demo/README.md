@@ -43,7 +43,7 @@ ev run -c configs/demo_agent_eval.yaml
 **What it demonstrates:**
 - `type: "azure_ai_agent"` target configuration
 - Agent-specific evaluators: task_adherence, tool_call_accuracy
-- Custom evaluator using `connections` from ExecutionContext
+- Custom evaluator: response_completeness
 - Per-evaluator deployment override (`relevance` uses gpt-4.1)
 
 ### 3. Multi-Framework Agent Comparison
