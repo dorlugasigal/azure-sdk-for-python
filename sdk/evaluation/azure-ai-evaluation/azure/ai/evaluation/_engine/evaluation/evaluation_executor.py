@@ -321,8 +321,12 @@ class EvaluationExecutor:
 
         if "output_items" not in model_output:
             model_output["output_items"] = agent_trace.to_conversation_format()
-        if "tool_calls" not in model_output:
-            model_output["tool_calls"] = agent_trace.to_tool_calls_format()
+            # Only populate tool_calls from trace when output_items also came
+            # from the trace.  When the target already returned output_items,
+            # _extract_tools_from_output_items will derive more accurate
+            # tool_calls (with proper arguments) from them.
+            if "tool_calls" not in model_output:
+                model_output["tool_calls"] = agent_trace.to_tool_calls_format()
         if "tool_definitions" not in model_output:
             tool_defs = _extract_tool_definitions_from_trace(agent_trace)
             if tool_defs:

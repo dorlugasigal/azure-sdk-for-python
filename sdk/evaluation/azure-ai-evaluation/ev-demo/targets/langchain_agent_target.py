@@ -2,13 +2,14 @@
 
 Demonstrates the simplified agent target pattern using LangGraph's
 create_react_agent — the proper way to build LangChain agents.
-The user just returns {"response": text}, engine handles the rest via OTel.
+Returns output_items with full tool call data parsed from LangGraph's
+result messages, so tool evaluators get accurate arguments and definitions.
 
 Install: pip install langchain-openai langgraph azure-identity
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from azure.ai.evaluation._engine.decorators import target, BaseTarget
 
@@ -80,13 +81,19 @@ class WeatherAgentLangChainTarget(BaseTarget):
             """Decide whether to bring an umbrella based on the weather condition."""
             return bring_umbrella(weather_condition)
 
-        self._agent = create_react_agent(model, tools=[lc_get_weather, lc_bring_umbrella])
+        self._tools = [lc_get_weather, lc_bring_umbrella]
+        self._agent = create_react_agent(model, tools=self._tools)
 
     def infer(self, input: Dict[str, Any]) -> Dict[str, Any]:
-        """Run the LangChain agent and return just the answer."""
+        """Run the LangChain agent and return output_items with full tool data.
+
+        Parses LangGraph's result messages to build proper output_items
+        with tool call arguments and tool results — OTel alone doesn't
+        capture these for LangChain agents.
+        """
         query = input.get("query") or input.get("question") or input.get("prompt") or str(list(input.values())[0])
 
-        # Use Azure AI OTel tracer if available (provides tool definitions + full traces)
+        # Use Azure AI OTel tracer if available (provides token counts + timing)
         config = {}
         try:
             from langchain_azure_ai.callbacks.tracers import AzureAIOpenTelemetryTracer
@@ -98,4 +105,57 @@ class WeatherAgentLangChainTarget(BaseTarget):
 
         final = result["messages"][-1].content if hasattr(result["messages"][-1], "content") else str(result["messages"][-1])
 
-        return {"response": final or ""}
+        output_items = self._build_output_items(result["messages"])
+        tool_definitions = self._build_tool_definitions()
+        return {"response": final or "", "output_items": output_items, "tool_definitions": tool_definitions}
+
+    def _build_tool_definitions(self) -> List[Dict[str, Any]]:
+        """Build tool definitions from LangChain tool schemas."""
+        defs = []
+        for tool in self._tools:
+            schema = tool.args_schema.model_json_schema() if tool.args_schema else {}
+            defs.append({
+                "type": "function",
+                "name": tool.name,
+                "description": tool.description or tool.name,
+                "parameters": {
+                    "type": "object",
+                    "properties": schema.get("properties", {}),
+                    "required": schema.get("required", []),
+                },
+            })
+        return defs
+
+    def _build_output_items(self, messages: List[Any]) -> List[Dict[str, Any]]:
+        """Convert LangGraph message objects to the standard output_items format."""
+        from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+
+        output_items: List[Dict[str, Any]] = []
+        for msg in messages:
+            if isinstance(msg, HumanMessage):
+                output_items.append({"role": "user", "content": msg.content})
+            elif isinstance(msg, AIMessage):
+                if msg.tool_calls:
+                    # AI message with tool calls
+                    content = []
+                    for tc in msg.tool_calls:
+                        content.append({
+                            "type": "tool_call",
+                            "tool_call_id": tc.get("id", ""),
+                            "name": tc.get("name", ""),
+                            "arguments": tc.get("args", {}),
+                        })
+                    output_items.append({"role": "assistant", "content": content})
+                elif msg.content:
+                    # Final text response
+                    output_items.append({
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": msg.content}],
+                    })
+            elif isinstance(msg, ToolMessage):
+                output_items.append({
+                    "role": "tool",
+                    "tool_call_id": msg.tool_call_id or "",
+                    "content": [{"type": "tool_result", "tool_call_id": msg.tool_call_id or "", "tool_result": msg.content}],
+                })
+        return output_items
