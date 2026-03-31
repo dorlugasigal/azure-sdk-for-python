@@ -667,14 +667,16 @@ def run_remote_evaluation(
         for criteria in testing_criteria:
             if "data_mapping" in criteria:
                 for param in list(criteria["data_mapping"].keys()):
+                    current = criteria["data_mapping"][param]
                     if param == "response":
-                        current = criteria["data_mapping"][param]
                         if "output_items" in current:
-                            # Explicitly mapped to output_items in YAML — keep it
                             criteria["data_mapping"][param] = "{{sample.output_items}}"
                         else:
-                            # Text-based evaluators get the final answer text
                             criteria["data_mapping"][param] = "{{sample.output_text}}"
+                    elif param == "tool_definitions":
+                        criteria["data_mapping"][param] = "{{sample.tool_definitions}}"
+                    elif param == "tool_calls":
+                        criteria["data_mapping"][param] = "{{sample.tool_calls}}"
 
     # --- Create evaluation -------------------------------------------------
     _progress("Creating evaluation...")
