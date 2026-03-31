@@ -54,13 +54,19 @@ class BaseEvaluator(ABC):
         mapped_fields = {}
         for param, mapping in self.mapping.items():
             source, field = mapping.split(".", 1)
-            try:
-                mapped_fields[param] = sources[source][field]
-            except KeyError as e:
-                raise KeyError(
-                    f"Field '{field}' not found in '{source}'. "
-                    f"Please verify mapping for metric '{self.display_name}'"
-                ) from e
+            value = sources.get(source, {}).get(field)
+            if value is None:
+                # Optional fields (e.g., tool_definitions) may not be present
+                # for all targets — use empty list/string as fallback
+                if field in ("tool_definitions", "tool_calls"):
+                    mapped_fields[param] = []
+                else:
+                    raise KeyError(
+                        f"Field '{field}' not found in '{source}'. "
+                        f"Please verify mapping for metric '{self.display_name}'"
+                    )
+            else:
+                mapped_fields[param] = value
         return mapped_fields
 
 
