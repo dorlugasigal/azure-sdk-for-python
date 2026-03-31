@@ -247,6 +247,7 @@ class EvaluationExecutor:
 
         if isinstance(model_output, dict):
             self._enrich_output_from_trace(model_output, agent_trace)
+            self._extract_tools_from_output_items(model_output)
             self._resolve_tool_definitions(model_output, agent_trace)
             self._ensure_output_items(model_output, record)
 
@@ -327,6 +328,44 @@ class EvaluationExecutor:
                 model_output["tool_definitions"] = tool_defs
 
     @staticmethod
+    def _extract_tools_from_output_items(model_output: Dict[str, Any]) -> None:
+        """Extract tool_definitions and tool_calls from output_items (Foundry agent responses).
+
+        Foundry agents return ``mcp_list_tools`` and ``mcp_call`` items directly
+        in output_items rather than via OTel traces.
+        """
+        output_items = model_output.get("output_items")
+        if not isinstance(output_items, list):
+            return
+
+        if "tool_definitions" not in model_output:
+            tool_defs = []
+            for item in output_items:
+                if isinstance(item, dict) and item.get("type") == "mcp_list_tools":
+                    for tool in item.get("tools", []):
+                        tool_defs.append({
+                            "type": "function",
+                            "name": tool.get("name", ""),
+                            "description": tool.get("description", tool.get("name", "")),
+                            "parameters": tool.get("inputSchema", tool.get("parameters", {})),
+                        })
+            if tool_defs:
+                model_output["tool_definitions"] = tool_defs
+
+        if "tool_calls" not in model_output:
+            tool_calls = []
+            for item in output_items:
+                if isinstance(item, dict) and item.get("type") == "mcp_call":
+                    tool_calls.append({
+                        "name": item.get("name", ""),
+                        "arguments": item.get("arguments", {}),
+                        "output": item.get("output", ""),
+                        "server_label": item.get("server_label", ""),
+                    })
+            if tool_calls:
+                model_output["tool_calls"] = tool_calls
+
+    @staticmethod
     def _resolve_tool_definitions(
         model_output: Dict[str, Any],
         agent_trace: Any,
@@ -375,6 +414,17 @@ class EvaluationExecutor:
             return
 
         items = model_output["output_items"]
+
+        # Filter out non-conversation items (mcp_list_tools, mcp_call, etc.)
+        # that lack a 'role' field — evaluators expect OpenAI conversation format.
+        conversation_types = {"message", None}
+        items[:] = [
+            item for item in items
+            if isinstance(item, dict) and (
+                "role" in item
+                or item.get("type") in conversation_types
+            )
+        ]
 
         # Prepend user query for evaluator conversation parser
         if items and items[0].get("role") != "user":

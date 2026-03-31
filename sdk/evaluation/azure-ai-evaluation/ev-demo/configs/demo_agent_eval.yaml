@@ -9,15 +9,15 @@ experiment:
     default_evaluator_deployment: "gpt-4.1-mini"
 
   targets:
-    - name: "my-agent"
+    - name: "docs-agent"
       type: "azure_ai_agent"
       agent_name: "${AZURE_AGENT_NAME}"
 
   dataset:
-    name: "agent_queries"
+    name: "doc_queries"
     type: "jsonl"
     args:
-      data_path: "data/agent_eval_data.jsonl"
+      data_path: "data/context7_eval_data.jsonl"
 
   evaluators:
     - name: "coherence"
