@@ -272,17 +272,81 @@ def _extract_inner_class(wrapper_cls: type) -> Optional[type]:
 
 
 def _get_compute_source(inner_cls: type) -> Optional[str]:
-    """Return dedented source of *inner_cls.compute*, renamed to ``_compute``."""
+    """Return the full module source needed to run the evaluator on Foundry.
+
+    Includes all module-level helpers, constants, and imports that the
+    ``compute()`` method depends on. The ``compute`` method is renamed to
+    ``_compute`` and stripped of the ``self`` parameter.
+    """
     if not hasattr(inner_cls, "compute"):
         return None
     try:
+        module = inspect.getmodule(inner_cls)
+
+        # Get the compute method, renamed to _compute
         raw = inspect.getsource(inner_cls.compute)
         source = textwrap.dedent(raw)
-        # Rename to a standalone function (remove ``self`` parameter)
         source = source.replace("def compute(self,", "def _compute(", 1)
         source = source.replace("def compute(self ,", "def _compute(", 1)
         source = source.replace("self.", "")
-        return source
+
+        if module is None:
+            return source
+
+        # Parse module source, keeping everything except:
+        # - the @evaluator-decorated class and its methods
+        # - azure.ai.evaluation imports (not available in sandbox)
+        # - the module docstring
+        try:
+            mod_source = inspect.getsource(module)
+        except (OSError, TypeError):
+            return source
+
+        lines = mod_source.split("\n")
+        result_lines: List[str] = []
+        in_class = False
+        in_docstring = False
+        class_indent = 0
+
+        for line in lines:
+            stripped = line.strip()
+
+            # Skip module-level docstrings
+            if not in_class and stripped.startswith('"""') or stripped.startswith("'''"):
+                quote = stripped[:3]
+                if stripped.count(quote) == 1:
+                    in_docstring = not in_docstring
+                continue
+            if in_docstring:
+                continue
+
+            # Skip azure SDK imports
+            if "azure.ai.evaluation" in line:
+                continue
+
+            # Detect @evaluator decorator → start skipping class
+            if stripped.startswith("@evaluator"):
+                in_class = True
+                continue
+
+            # Detect class definition after decorator
+            if in_class and stripped.startswith("class "):
+                class_indent = len(line) - len(line.lstrip())
+                continue
+
+            # Inside the class → skip indented lines
+            if in_class:
+                if stripped == "" or (line and len(line) - len(line.lstrip()) > class_indent):
+                    continue
+                if line and len(line) - len(line.lstrip()) <= class_indent and stripped:
+                    in_class = False  # Back to module level
+
+            if not in_class:
+                result_lines.append(line)
+
+        prefix = "\n".join(result_lines).strip()
+        return prefix + "\n\n\n" + source if prefix else source
+
     except (OSError, TypeError):
         return None
 
