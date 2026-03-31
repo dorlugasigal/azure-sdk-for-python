@@ -23,23 +23,23 @@ experiment:
     - name: "coherence"
       mapping:
         query: "dataset.query"
-        response: "model.response"
+        response: "target.response"
 
     - name: "relevance"
       deployment_name: "gpt-4.1"
       mapping:
         query: "dataset.query"
-        response: "model.response"
+        response: "target.response"
 
     - name: "task_adherence"
       mapping:
         query: "dataset.query"
-        response: "model.output_items"
+        response: "target.output_items"
 
     - name: "intent_resolution"
       mapping:
         query: "dataset.query"
-        response: "model.output_items"
+        response: "target.output_items"
 
   connections:
     default:

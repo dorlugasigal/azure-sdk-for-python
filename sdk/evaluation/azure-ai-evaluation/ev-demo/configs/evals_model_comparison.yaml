@@ -1,15 +1,15 @@
 experiment:
   name: "model-comparison"
 
-  compute:
-    type: "foundry"
-    azure_ai_project: "${AZURE_AI_PROJECT}"
+  cloud:
+    foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    foundry_project: "${AZURE_AI_PROJECT}"
+    default_evaluator_deployment: "gpt-4.1-mini"
 
   targets:
     - name: "model_compare"
       type: "azure_ai_model"
       deployment_name: ["gpt-4.1-mini", "gpt-4.1"]
-      connection_name: "default"
       args:
         - temperature: [0.3, 0.9]
 
@@ -23,16 +23,12 @@ experiment:
     - name: "relevance"
       mapping:
         query: "dataset.question"
-        response: "model.response"
+        response: "target.response"
     - name: "coherence"
       mapping:
         query: "dataset.question"
-        response: "model.response"
+        response: "target.response"
     - name: "conciseness"
+      deployment_name: "gpt-4.1"
       mapping:
-        response: "model.response"
-
-  connections:
-    default:
-      azure_endpoint: "${AZURE_OPENAI_ENDPOINT}"
-      azure_deployment: "${AZURE_OPENAI_DEPLOYMENT}"
+        response: "target.response"

@@ -236,7 +236,7 @@ def _create_empty_evaluator(name: str, output_dir: Path, config_path: Path, forc
     )
 
     if config_path.exists():
-        mapping = {"response": "model.response"}
+        mapping = {"response": "target.response"}
         if add_evaluator_to_config(config_path, name, mapping=mapping):
             echo(
                 f"[bold green]✅[/bold green] Updated {config_path}"
@@ -266,7 +266,7 @@ def _add_builtin_evaluator(name: str, config_path: Path, force: bool):
         echo_error(f"Config file not found: {config_path}")
         sys.exit(1)
 
-    mapping = {"response": "model.response", "query": "dataset.query"}
+    mapping = {"response": "target.response", "query": "dataset.query"}
     if add_evaluator_to_config(config_path, name, mapping=mapping):
         echo(
             f"[bold green]✅[/bold green] Added built-in evaluator '{name}' to {config_path}"
