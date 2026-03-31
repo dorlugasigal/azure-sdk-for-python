@@ -20,6 +20,7 @@ from azure.ai.evaluation._engine.models import EvaluationOutput, InferenceOutput
 # Patch targets (module path within the evaluator module)
 # ---------------------------------------------------------------------------
 _MOD = "azure.ai.evaluation._engine.evaluator"
+_EXEC_MOD = "azure.ai.evaluation._engine.evaluation_executor"
 
 
 # ---------------------------------------------------------------------------
@@ -200,33 +201,33 @@ class TestTargetRegistration:
 
 class TestArgsCombinations:
     def test_no_args(self, config_yaml_path: Path) -> None:
-        evaluator = _build_evaluator(str(config_yaml_path), load_config_only=True)
+        from azure.ai.evaluation._engine.combination_utils import generate_args_combinations
         from azure.ai.evaluation._engine.config import TargetVariantConfig
 
         cfg = TargetVariantConfig(name="test")
-        result = evaluator._generate_args_combinations(cfg)
+        result = generate_args_combinations(cfg)
         assert result == [{}]
 
     def test_single_arg(self, config_yaml_path: Path) -> None:
-        evaluator = _build_evaluator(str(config_yaml_path), load_config_only=True)
+        from azure.ai.evaluation._engine.combination_utils import generate_args_combinations
         from azure.ai.evaluation._engine.config import TargetVariantConfig
 
         cfg = TargetVariantConfig(name="test", args=[{"temperature": [0.5, 1.0]}])
-        result = evaluator._generate_args_combinations(cfg)
+        result = generate_args_combinations(cfg)
 
         assert len(result) == 2
         assert {"temperature": 0.5} in result
         assert {"temperature": 1.0} in result
 
     def test_cartesian_product(self, config_yaml_path: Path) -> None:
-        evaluator = _build_evaluator(str(config_yaml_path), load_config_only=True)
+        from azure.ai.evaluation._engine.combination_utils import generate_args_combinations
         from azure.ai.evaluation._engine.config import TargetVariantConfig
 
         cfg = TargetVariantConfig(
             name="test",
             args=[{"temperature": [0.5, 1.0]}, {"max_tokens": [100, 200]}],
         )
-        result = evaluator._generate_args_combinations(cfg)
+        result = generate_args_combinations(cfg)
 
         assert len(result) == 4  # 2 × 2
 
@@ -238,26 +239,30 @@ class TestArgsCombinations:
 
 class TestVariantNaming:
     def test_generate_variant_name_no_args(self, config_yaml_path: Path) -> None:
-        evaluator = _build_evaluator(str(config_yaml_path), load_config_only=True)
-        assert evaluator._generate_variant_name("model", {}) == "model"
+        from azure.ai.evaluation._engine.combination_utils import generate_variant_name
+
+        assert generate_variant_name("model", {}) == "model"
 
     def test_generate_variant_name_with_args(self, config_yaml_path: Path) -> None:
-        evaluator = _build_evaluator(str(config_yaml_path), load_config_only=True)
-        name = evaluator._generate_variant_name("model", {"temp": 0.5, "tokens": 100})
+        from azure.ai.evaluation._engine.combination_utils import generate_variant_name
+
+        name = generate_variant_name("model", {"temp": 0.5, "tokens": 100})
         assert name == "model__temp=0.5_tokens=100"
 
     def test_simplify_names_single(self, config_yaml_path: Path) -> None:
-        evaluator = _build_evaluator(str(config_yaml_path), load_config_only=True)
-        result = evaluator._simplify_combination_names("m", [{"a": 1}])
+        from azure.ai.evaluation._engine.combination_utils import simplify_combination_names
+
+        result = simplify_combination_names("m", [{"a": 1}])
         assert len(result) == 1
 
     def test_simplify_names_varying_keys_only(self, config_yaml_path: Path) -> None:
-        evaluator = _build_evaluator(str(config_yaml_path), load_config_only=True)
+        from azure.ai.evaluation._engine.combination_utils import simplify_combination_names
+
         combos = [
             {"prompt": "baseline", "temp": 0.7},
             {"prompt": "few_shot", "temp": 0.7},
         ]
-        result = evaluator._simplify_combination_names("m", combos)
+        result = simplify_combination_names("m", combos)
 
         # Only "prompt" varies → names should include only prompt values
         for name in result:
@@ -285,11 +290,11 @@ class TestEvaluationLoop:
             )
         )
 
-        # Patch the internal evaluation methods
+        # Patch the internal evaluation methods on EvaluationExecutor
         with (
-            patch.object(evaluator, "_evaluate_model", return_value=0) as mock_eval,
-            patch.object(
-                evaluator, "_aggregate_and_save_evaluators", return_value={}
+            patch(f"{_EXEC_MOD}.EvaluationExecutor.evaluate_model", return_value=0) as mock_eval,
+            patch(
+                f"{_EXEC_MOD}.EvaluationExecutor._aggregate_and_save_evaluators", return_value={}
             ),
         ):
             result = evaluator.evaluate(mock_dataset)
@@ -304,7 +309,7 @@ class TestEvaluationLoop:
         mock_dataset.__len__ = MagicMock(return_value=2)
         mock_dataset.__iter__ = MagicMock(return_value=iter([{"q": "a"}]))
 
-        with patch.object(evaluator, "_evaluate_model", return_value=1):
+        with patch(f"{_EXEC_MOD}.EvaluationExecutor.evaluate_model", return_value=1):
             result = evaluator.evaluate(mock_dataset)
 
         assert result["status"] == "completed_with_errors"

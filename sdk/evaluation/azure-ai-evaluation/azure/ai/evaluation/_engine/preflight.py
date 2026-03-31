@@ -121,7 +121,7 @@ class CheckResult:
 def _count_target_combinations(target_cfg: TargetVariantConfig) -> int:
     """Count the number of argument combinations for a single target.
 
-    Mirrors the Cartesian-product logic in ``ModelEvaluator._generate_args_combinations``
+    Mirrors the Cartesian-product logic in ``combination_utils.generate_args_combinations``
     without requiring a full evaluator instance.
     """
     if not target_cfg.args:
