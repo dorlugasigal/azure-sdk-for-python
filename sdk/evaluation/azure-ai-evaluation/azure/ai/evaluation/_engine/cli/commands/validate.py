@@ -125,11 +125,13 @@ def validate(config, env, output_json):
             "Output": getattr(cfg.experiment, "output_path", "output"),
         }
 
-        compute_cfg = getattr(cfg.experiment, "compute", None)
-        if compute_cfg:
-            info["Compute"] = getattr(compute_cfg, "type", "local")
+        cloud_cfg = getattr(cfg.experiment, "cloud", None)
+        if cloud_cfg and cloud_cfg.foundry_project:
+            info["Cloud"] = f"Foundry ({cloud_cfg.foundry_project})"
+        elif cloud_cfg:
+            info["Cloud"] = "Local (cloud configured)"
         else:
-            warnings.append("No compute backend configured (will use 'local' by default)")
+            info["Cloud"] = "Local (no cloud block)"
 
         if not cfg.experiment.targets:
             warnings.append("No targets configured")

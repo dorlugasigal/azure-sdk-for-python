@@ -95,7 +95,7 @@ def _configure_output_path(output: Optional[str]) -> Optional[str]:
 @click.option("--dataset", "-d", "dataset_path", required=False, default=None, help="Path to dataset file (overrides config)")
 @click.option("--env", "-e", default=".env", help="Path to .env file")
 @click.option("--remote", "-r", is_flag=True, help="Run on configured compute backend")
-@click.option("--models", "-m", required=False, default=None, help="Comma-separated target names to evaluate")
+@click.option("--targets", "-t", required=False, default=None, help="Comma-separated target names to evaluate")
 @click.option("--auto-approve", "-y", is_flag=True, help="Skip confirmation prompts")
 @click.option("--output", "-o", default=None, help="Output path override")
 @click.option("--stream-remote-logs", is_flag=True, default=False, help="Stream logs from remote compute to terminal (only applies with --remote)")
@@ -110,7 +110,7 @@ def run(
     dataset_path,
     env,
     remote,
-    models,
+    targets,
     auto_approve,
     output,
     stream_remote_logs,
@@ -163,10 +163,10 @@ def run(
         # Discover local components
         import_local_components(os.getcwd())
 
-        # Parse --models filter
+        # Parse --targets filter
         model_filter: Optional[List[str]] = None
-        if models:
-            model_filter = [m.strip() for m in models.split(",") if m.strip()]
+        if targets:
+            model_filter = [m.strip() for m in targets.split(",") if m.strip()]
 
         trace_status = _configure_tracing(
             trace=trace,

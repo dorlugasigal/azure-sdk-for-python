@@ -24,48 +24,14 @@ import yaml
 from ..utils.constants import resolve_config_path
 from ..utils.discovery import load_config_safe
 from ..utils.output import echo, echo_error, has_rich, get_console, show_panel
+from ..utils.yaml_helpers import load_yaml_raw, load_yaml_ruamel, write_yaml_ruamel
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-_DEFAULT_API_VERSION = "2024-12-01-preview"
-
-
-def _load_yaml_raw(path: str) -> dict:
-    """Load a YAML file as a plain dict."""
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
-
-
-def _write_yaml_ruamel(path: str, data) -> None:
-    """Write *data* to *path* using ruamel.yaml to preserve comments.
-
-    Falls back to PyYAML if ruamel is not installed.
-    """
-    try:
-        from ruamel.yaml import YAML
-
-        ry = YAML()
-        ry.preserve_quotes = True  # type: ignore[assignment]
-        with open(path, "w", encoding="utf-8") as f:
-            ry.dump(data, f)
-    except ImportError:
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
-
-
-def _load_yaml_ruamel(path: str):
-    """Load a YAML file using ruamel.yaml (preserves comments) or PyYAML."""
-    try:
-        from ruamel.yaml import YAML
-
-        ry = YAML()
-        with open(path, encoding="utf-8") as f:
-            return ry.load(f)
-    except ImportError:
-        return _load_yaml_raw(path)
+from ..utils.constants import DEFAULT_API_VERSION as _DEFAULT_API_VERSION
 
 
 def _validate_connection_name(name: str) -> tuple[bool, str]:
@@ -129,7 +95,7 @@ def list_connections(config):
         click.echo("Create a project first with: ev new <name>", err=True)
         sys.exit(1)
 
-    cfg_data = _load_yaml_raw(config)
+    cfg_data = load_yaml_raw(config)
     connections = _get_connections(cfg_data)
 
     if not connections:
@@ -205,7 +171,7 @@ def add_connection(name, endpoint, deployment, api_version, config, force):
         endpoint = click.prompt("  Endpoint URL")
 
     # Load config (ruamel preserves comments)
-    cfg_data = _load_yaml_ruamel(config)
+    cfg_data = load_yaml_ruamel(config)
     if cfg_data is None:
         cfg_data = {}
 
@@ -234,7 +200,7 @@ def add_connection(name, endpoint, deployment, api_version, config, force):
     else:
         connections.append(new_conn)
 
-    _write_yaml_ruamel(config, cfg_data)
+    write_yaml_ruamel(config, cfg_data)
 
     if _HAS_RICH:
         _console.print(f"[green]✓[/green] Connection [cyan]{name}[/cyan] added to {config}")
@@ -394,7 +360,7 @@ def discover_connections(config):
     if not click.confirm("\n  Create a connection from a deployment?", default=True):
         return
 
-    from azure.ai.evaluation._engine.cli.commands.new import _select_option
+    from azure.ai.evaluation._engine.cli.utils.azure_discovery import select_option as _select_option
     dep_idx = _select_option("Select deployment:", options, default=0)
     selected_dep = deployments[dep_idx]
     dep_name = selected_dep.get("name", "unknown")
@@ -409,7 +375,7 @@ def discover_connections(config):
 
     # Write to config
     if os.path.exists(config):
-        cfg_data = _load_yaml_ruamel(config)
+        cfg_data = load_yaml_ruamel(config)
         if cfg_data is None:
             cfg_data = {}
     else:
@@ -425,7 +391,7 @@ def discover_connections(config):
         "endpoint": conn_endpoint,
     }
     connections.append(new_conn)
-    _write_yaml_ruamel(config, cfg_data)
+    write_yaml_ruamel(config, cfg_data)
 
     if _HAS_RICH:
         _console.print(f"\n[green]✓[/green] Connection [cyan]{conn_name}[/cyan] ({dep_name}) added to {config}")

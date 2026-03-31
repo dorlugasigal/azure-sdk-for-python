@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 
 import click
 
+from ..utils.config_helpers import read_config_section, add_to_config_section
 from ..utils.constants import BUILTIN_EVALUATORS, resolve_config_path
 from ..utils.discovery import import_local_components, discover_project_components
 from ..utils.output import echo, echo_error, has_rich
@@ -28,20 +29,7 @@ TEMPLATE_TYPE_BUILTIN = "builtin"
 
 def read_evaluators_from_config(config_path: Path) -> List[Dict[str, Any]]:
     """Read evaluator configurations from the YAML config."""
-    try:
-        import yaml
-
-        with open(config_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-    except Exception:
-        return []
-
-    if not data or "experiment" not in data:
-        return []
-
-    experiment = data["experiment"]
-    evaluators = experiment.get("evaluators", [])
-    return evaluators if evaluators else []
+    return read_config_section(config_path, "evaluators")
 
 
 def evaluator_exists_in_config(config_path: Path, name: str) -> bool:
@@ -55,39 +43,10 @@ def add_evaluator_to_config(
     mapping: Dict[str, str] | None = None,
 ) -> bool:
     """Add or replace an evaluator entry in the config YAML."""
-    try:
-        from ruamel.yaml import YAML
-
-        yaml = YAML()
-        yaml.preserve_quotes = True  # type: ignore[assignment]
-
-        with open(config_path, encoding="utf-8") as f:
-            data = yaml.load(f)
-        if data is None:
-            data = {}
-
-        experiment = data.setdefault("experiment", {})
-
-        evaluators = experiment.setdefault("evaluators", [])
-
-        entry: Dict[str, Any] = {"name": name}
-        if mapping:
-            entry["mapping"] = mapping
-
-        replaced = False
-        for i, e in enumerate(evaluators):
-            if isinstance(e, dict) and e.get("name") == name:
-                evaluators[i] = entry
-                replaced = True
-                break
-        if not replaced:
-            evaluators.append(entry)
-
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f)
-        return True
-    except Exception:
-        return False
+    entry: Dict[str, Any] = {"name": name}
+    if mapping:
+        entry["mapping"] = mapping
+    return add_to_config_section(config_path, "evaluators", entry)
 
 
 def _snake_to_pascal(name: str) -> str:
@@ -248,7 +207,7 @@ def add(evaluator_type, name, output, config, force):
 
     if config_path.exists() and not force and evaluator_exists_in_config(config_path, name):
         echo_error(f"Evaluator '{name}' already exists in config. Use --force to overwrite.")
-        raise click.Abort()
+        sys.exit(1)
 
     if evaluator_type == TEMPLATE_TYPE_EMPTY:
         _create_empty_evaluator(name, Path(output), config_path, force)
@@ -264,7 +223,7 @@ def _create_empty_evaluator(name: str, output_dir: Path, config_path: Path, forc
 
     if evaluator_file.exists() and not force:
         echo_error(f"Evaluator file already exists: {evaluator_file}. Use --force to overwrite.")
-        raise click.Abort()
+        sys.exit(1)
 
     content = EMPTY_EVALUATOR_TEMPLATE.format(name=name, class_name=class_name)
     evaluator_file.parent.mkdir(parents=True, exist_ok=True)
@@ -301,11 +260,11 @@ def _add_builtin_evaluator(name: str, config_path: Path, force: bool):
     if name not in builtin_names:
         echo_error(f"Unknown built-in evaluator: {name}")
         echo("\nUse 'ev evaluator builtins' to see available evaluators.")
-        raise click.Abort()
+        sys.exit(1)
 
     if not config_path.exists():
         echo_error(f"Config file not found: {config_path}")
-        raise click.Abort()
+        sys.exit(1)
 
     mapping = {"response": "model.response", "query": "dataset.query"}
     if add_evaluator_to_config(config_path, name, mapping=mapping):

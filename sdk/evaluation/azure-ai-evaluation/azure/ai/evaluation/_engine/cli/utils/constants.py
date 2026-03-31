@@ -11,6 +11,10 @@ CONFIG_CANDIDATES = ["config.yaml", "evals.yaml", "experiment/config.yaml"]
 
 DEFAULT_CONFIG = "config.yaml"
 
+DEFAULT_API_VERSION = "2024-12-01-preview"
+
+SDK_GIT_REPO = "https://github.com/Azure/azure-sdk-for-python.git"
+
 
 def resolve_config_path(explicit: Optional[str] = None) -> str:
     """Return the path to the project config file.

@@ -16,38 +16,7 @@ import yaml
 
 from ..utils.constants import resolve_config_path
 from ..utils.output import echo, echo_error, has_rich, get_console, show_panel
-
-
-# ---------------------------------------------------------------------------
-# YAML helpers (same pattern as connection.py)
-# ---------------------------------------------------------------------------
-
-
-def _load_yaml_ruamel(path: str):
-    """Load a YAML file using ruamel.yaml (preserves comments) or PyYAML."""
-    try:
-        from ruamel.yaml import YAML
-
-        ry = YAML()
-        with open(path, encoding="utf-8") as f:
-            return ry.load(f)
-    except ImportError:
-        with open(path, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-
-
-def _write_yaml_ruamel(path: str, data) -> None:
-    """Write *data* to *path* using ruamel.yaml to preserve comments."""
-    try:
-        from ruamel.yaml import YAML
-
-        ry = YAML()
-        ry.preserve_quotes = True  # type: ignore[assignment]
-        with open(path, "w", encoding="utf-8") as f:
-            ry.dump(data, f)
-    except ImportError:
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+from ..utils.yaml_helpers import load_yaml_ruamel, write_yaml_ruamel
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +87,7 @@ def set_cloud(foundry_endpoint, foundry_project, default_deployment, app_insight
         sys.exit(1)
 
     # Load config (ruamel preserves comments)
-    cfg_data = _load_yaml_ruamel(config)
+    cfg_data = load_yaml_ruamel(config)
     if cfg_data is None:
         cfg_data = {}
 
@@ -141,7 +110,7 @@ def set_cloud(foundry_endpoint, foundry_project, default_deployment, app_insight
     if isinstance(compute_cfg, dict) and compute_cfg.get("type") == "foundry":
         del experiment["compute"]
 
-    _write_yaml_ruamel(config, cfg_data)
+    write_yaml_ruamel(config, cfg_data)
 
     if _HAS_RICH:
         _console.print(f"[green]✓[/green] Cloud configuration saved to [cyan]{config}[/cyan]")

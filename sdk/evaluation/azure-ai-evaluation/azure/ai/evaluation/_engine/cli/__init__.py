@@ -26,7 +26,6 @@ import click
 
 from .commands.clear import clear
 from .commands.cloud import cloud
-from .commands.compute import compute
 from .commands.connection import connection
 from .commands.dataset import dataset
 from .commands.list_cmd import discover
@@ -97,7 +96,6 @@ cli.add_command(discover)
 cli.add_command(view)
 cli.add_command(clear)
 cli.add_command(cloud)
-cli.add_command(compute)
 cli.add_command(target_cmd, name="target")
 cli.add_command(evaluator)
 cli.add_command(dataset)

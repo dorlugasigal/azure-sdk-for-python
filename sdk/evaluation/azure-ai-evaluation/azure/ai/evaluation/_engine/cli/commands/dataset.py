@@ -16,6 +16,7 @@ import click
 from ..utils.constants import resolve_config_path
 from ..utils.discovery import import_local_components, discover_project_components
 from ..utils.output import echo, echo_error, has_rich
+from ..utils.yaml_helpers import load_yaml_raw, load_yaml_ruamel, write_yaml_ruamel
 
 
 DEFAULT_CONFIG = "config.yaml"
@@ -44,10 +45,7 @@ question,answer,context
 def read_dataset_from_config(config_path: Path) -> Optional[Dict[str, Any]]:
     """Read dataset configuration from YAML."""
     try:
-        import yaml
-
-        with open(config_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+        data = load_yaml_raw(str(config_path))
     except Exception:
         return None
 
@@ -62,13 +60,7 @@ def update_dataset_in_config(
 ) -> bool:
     """Update dataset entry in config YAML."""
     try:
-        from ruamel.yaml import YAML
-
-        yaml = YAML()
-        yaml.preserve_quotes = True  # type: ignore[assignment]
-
-        with open(config_path, encoding="utf-8") as f:
-            data = yaml.load(f)
+        data = load_yaml_ruamel(str(config_path))
         if data is None:
             data = {}
 
@@ -80,8 +72,7 @@ def update_dataset_in_config(
             "args": {"data_path": data_path},
         }
 
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f)
+        write_yaml_ruamel(str(config_path), data)
         return True
     except Exception:
         return False
@@ -155,13 +146,13 @@ def add(dataset_type, from_file, name, output, config, force):
     if dataset_type and from_file:
         echo_error("Cannot specify both --type and --from.")
         echo("  Use --type to create a sample OR --from to import a file.")
-        raise click.Abort()
+        sys.exit(1)
 
     if not dataset_type and not from_file:
         echo_error("Must specify either --type or --from.")
         echo("  • --type to create a minimal sample dataset")
         echo("  • --from to import your existing dataset")
-        raise click.Abort()
+        sys.exit(1)
 
     output_dir = Path(output)
     config = resolve_config_path(config)
@@ -182,7 +173,7 @@ def _create_sample_dataset(
 
     if output_file.exists() and not force:
         echo_error(f"Dataset file already exists: {output_file}. Use --force to overwrite.")
-        raise click.Abort()
+        sys.exit(1)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     content = SAMPLE_JSONL if dataset_type == "jsonl" else SAMPLE_CSV
@@ -220,13 +211,13 @@ def _import_dataset(
     except ValueError:
         echo_error(f"Unsupported file type: {source_file.suffix}")
         echo(f"\nSupported types: {', '.join(SUPPORTED_TYPES)}")
-        raise click.Abort() from None
+        sys.exit(1)
 
     output_file = output_dir / source_file.name
 
     if output_file.exists() and not force:
         echo_error(f"Dataset file already exists: {output_file}. Use --force to overwrite.")
-        raise click.Abort()
+        sys.exit(1)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(str(source_file), str(output_file))
@@ -267,7 +258,7 @@ def show(config, verbose):
 
     if not config_path.exists():
         echo_error(f"Config file not found: {config_path}")
-        raise click.Abort()
+        sys.exit(1)
 
     dataset_config = read_dataset_from_config(config_path)
 

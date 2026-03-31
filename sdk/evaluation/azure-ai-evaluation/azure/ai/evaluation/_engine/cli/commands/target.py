@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import click
 
+from ..utils.config_helpers import read_config_section, add_to_config_section
 from ..utils.constants import resolve_config_path
 from ..utils.discovery import import_local_components, discover_project_components
 from ..utils.output import echo, echo_error, has_rich
@@ -19,26 +20,13 @@ DEFAULT_CONFIG = "config.yaml"
 
 
 # ---------------------------------------------------------------------------
-# Config helpers (previously in model.py)
+# Config helpers
 # ---------------------------------------------------------------------------
 
 
 def read_targets_from_config(config_path: Path) -> List[Dict[str, Any]]:
     """Read target configurations from the YAML config file."""
-    try:
-        import yaml
-
-        with open(config_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-    except Exception:
-        return []
-
-    if not data or "experiment" not in data:
-        return []
-
-    experiment = data["experiment"]
-    targets = experiment.get("targets", [])
-    return targets if targets else []
+    return read_config_section(config_path, "targets")
 
 
 def target_exists_in_config(config_path: Path, name: str) -> bool:
@@ -57,43 +45,13 @@ def add_target_to_config(
 
     Returns ``True`` on success, ``False`` on failure.
     """
-    try:
-        from ruamel.yaml import YAML
-
-        yaml = YAML()
-        yaml.preserve_quotes = True  # type: ignore[assignment]
-
-        with open(config_path, encoding="utf-8") as f:
-            data = yaml.load(f)
-        if data is None:
-            data = {}
-
-        experiment = data.setdefault("experiment", {})
-
-        targets = experiment.setdefault("targets", [])
-
-        entry: Dict[str, Any] = {
-            "name": name,
-            "type": target_type,
-            "connection_name": connection_name,
-            "args": args if args else {"temperature": [0.7]},
-        }
-
-        # Replace existing entry with same name, or append
-        replaced = False
-        for i, t in enumerate(targets):
-            if isinstance(t, dict) and t.get("name") == name:
-                targets[i] = entry
-                replaced = True
-                break
-        if not replaced:
-            targets.append(entry)
-
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f)
-        return True
-    except Exception:
-        return False
+    entry: Dict[str, Any] = {
+        "name": name,
+        "type": target_type,
+        "connection_name": connection_name,
+        "args": args if args else {"temperature": [0.7]},
+    }
+    return add_to_config_section(config_path, "targets", entry)
 
 
 @click.group(invoke_without_command=True)
@@ -138,14 +96,14 @@ def add(name, target_type, config, force):
     if not config_path.exists():
         echo_error(f"Config file not found: {config_path}")
         echo("Make sure you're in the project directory or use --config to specify the path.")
-        raise click.Abort()
+        sys.exit(1)
 
     if not name:
         name = click.prompt("Enter a name for the target", default="my_target")
 
     if not force and target_exists_in_config(config_path, name):
         echo_error(f"Target '{name}' already exists in config. Use --force to overwrite.")
-        raise click.Abort()
+        sys.exit(1)
 
     if add_target_to_config(config_path, name, target_type=target_type):
         echo(

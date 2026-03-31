@@ -19,7 +19,7 @@ from ..utils.output import echo, echo_error, has_rich, get_console
 _NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 _UNSAFE_TOML_RE = re.compile(r'["\n\r\\]')
 
-_SDK_GIT_REPO = "https://github.com/Azure/azure-sdk-for-python.git"
+from ..utils.constants import SDK_GIT_REPO as _SDK_GIT_REPO
 
 
 def _validate_project_name(name: str | None) -> tuple[bool, str]:
@@ -346,32 +346,27 @@ def new(
         ]
         env_path.write_text("\n".join(env_lines), encoding="utf-8")
 
-        # Inject compute section into config.yaml
+        # Inject cloud section into config.yaml
         config_path = project_path / "config.yaml"
         if config_path.exists():
             config_text = config_path.read_text(encoding="utf-8")
-            foundry_sections = (
-                '\n  compute:\n'
-                '    type: "foundry"\n'
-                '    azure_ai_project: "${AZURE_AI_PROJECT_ENDPOINT}"\n'
+            discovered_deployment = foundry_config.get("deployment", "") or "gpt-4.1-mini"
+            cloud_section = (
+                '\n  cloud:\n'
+                '    foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"\n'
+                '    foundry_project: "${AZURE_AI_PROJECT}"\n'
+                f'    default_evaluator_deployment: "{discovered_deployment}"\n'
             )
             # Insert before the connections section
             if "  connections:" in config_text:
                 config_text = config_text.replace(
                     "  connections:",
-                    foundry_sections + "\n  connections:",
+                    cloud_section + "\n  connections:",
                 )
             else:
-                config_text += foundry_sections
-
-            # Update default connection endpoint to Foundry endpoint
-            config_text = config_text.replace(
-                'endpoint: "${AZURE_OPENAI_ENDPOINT}"',
-                'endpoint: "${AZURE_AI_PROJECT_ENDPOINT}"',
-            )
+                config_text += cloud_section
 
             # Convert baseline target to azure_ai_model for both local and remote execution
-            discovered_deployment = foundry_config.get("deployment", "") or "gpt-4"
             config_text = config_text.replace(
                 '    - name: "baseline"\n'
                 '      args:\n'
@@ -388,7 +383,7 @@ def new(
             )
 
             # Update connection deployment to discovered one (if any)
-            if discovered_deployment and discovered_deployment != "gpt-4":
+            if discovered_deployment and discovered_deployment != "gpt-4.1-mini":
                 config_text = config_text.replace(
                     'deployment: "gpt-4"',
                     f'deployment: "{discovered_deployment}"',

@@ -290,8 +290,8 @@ def view(port, no_browser):
                                     evaluator_names.append(k)
                         except Exception:
                             pass
-                    info["metrics"] = [m for m in evaluator_names if "fail" not in m.lower()
-                                       and m not in ("number_of_records", "average_response_time_ms")]
+                    info["evaluators"] = [m for m in evaluator_names if "fail" not in m.lower()
+                                          and m not in ("number_of_records", "average_response_time_ms")]
                     info["status"] = "Completed"
                     data.append(info)
                 self.send_response(200)
