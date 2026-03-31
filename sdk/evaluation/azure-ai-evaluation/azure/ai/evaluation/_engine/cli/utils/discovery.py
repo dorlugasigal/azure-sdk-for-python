@@ -88,7 +88,7 @@ def discover_project_components() -> Dict[str, List[str]]:
 def load_config_safe(config_path: str):
     """Load Config from YAML, returning None on failure."""
     try:
-        from azure.ai.evaluation._engine.config import Config
+        from azure.ai.evaluation._engine.models.config import Config
         return Config.from_yaml(config_path)
     except Exception:
         return None

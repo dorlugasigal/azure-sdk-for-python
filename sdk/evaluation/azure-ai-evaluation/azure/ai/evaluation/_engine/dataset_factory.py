@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, FrozenSet, Optional
 from .decorators import DATASET_REGISTRY, BaseDataset
 
 if TYPE_CHECKING:
-    from .config import DatasetConfig
+    from .models.config import DatasetConfig
     from .models import ExecutionContext
 
 logger = logging.getLogger(__name__)

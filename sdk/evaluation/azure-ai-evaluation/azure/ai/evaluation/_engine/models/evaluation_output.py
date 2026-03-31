@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from .inference_output import InferenceOutput
+from ..models.inference_output import InferenceOutput
 
 
 @dataclass

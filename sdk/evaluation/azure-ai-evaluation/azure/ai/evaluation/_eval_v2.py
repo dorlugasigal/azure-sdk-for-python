@@ -57,7 +57,7 @@ def _run_engine(
     config_path: str, cleanup_config: bool = False
 ) -> Dict[str, Any]:
     """Run the evee engine with a config file."""
-    from azure.ai.evaluation._engine.evaluator import ModelEvaluator
+    from azure.ai.evaluation._engine.evaluation.evaluator import ModelEvaluator
     from azure.ai.evaluation._engine.discovery import discover_components
     discover_components()
     evaluator = ModelEvaluator(config_path=config_path)

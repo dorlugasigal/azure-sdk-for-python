@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from azure.ai.evaluation._engine.otel_trace_capture import (
+from azure.ai.evaluation._engine.tracing.otel_trace_capture import (
     EVALUATION_EVENT_NAME,
     AgentTrace,
     CapturedLogEvent,

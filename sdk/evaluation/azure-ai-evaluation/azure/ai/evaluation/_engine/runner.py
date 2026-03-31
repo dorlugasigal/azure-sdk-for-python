@@ -11,7 +11,7 @@ from .compute import (
     LocalComputeBackend,
     RunContext,
 )
-from .config import Config
+from .models.config import Config
 from .logging import setup_logger
 
 logger = setup_logger(__name__)

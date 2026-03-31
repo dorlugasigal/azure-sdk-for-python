@@ -235,8 +235,8 @@ class Config(BaseModel):
 
         :returns: List of validation error messages. Empty list means valid.
         """
-        from .decorators import DATASET_REGISTRY, EVALUATOR_REGISTRY, TARGET_REGISTRY
-        from .dataset_factory import _ensure_builtin_datasets
+        from ..decorators import DATASET_REGISTRY, EVALUATOR_REGISTRY, TARGET_REGISTRY
+        from ..dataset_factory import _ensure_builtin_datasets
 
         _ensure_builtin_datasets()
 

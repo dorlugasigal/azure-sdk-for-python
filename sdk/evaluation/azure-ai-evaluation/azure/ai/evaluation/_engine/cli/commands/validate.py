@@ -115,7 +115,7 @@ def validate(config, env, output_json):
     cfg = None
 
     try:
-        from azure.ai.evaluation._engine.config import Config
+        from azure.ai.evaluation._engine.models.config import Config
         cfg = Config.from_yaml(config)
 
         info: Dict[str, str] = {

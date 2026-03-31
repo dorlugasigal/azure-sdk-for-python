@@ -52,7 +52,7 @@ class LocalComputeBackend(ComputeBackend):
     def submit(self, context: RunContext, **kwargs: Any) -> JobInfo:
         logger.info(f"Starting local evaluation: {context.config_path}")
         try:
-            from .evaluator import ModelEvaluator
+            from .evaluation.evaluator import ModelEvaluator
 
             # Show spinner during init (imports, target setup, evaluator registration)
             try:

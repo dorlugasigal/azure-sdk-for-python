@@ -12,7 +12,7 @@ from itertools import product
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .config import Config, TargetVariantConfig
+from .models.config import Config, TargetVariantConfig
 
 logger = logging.getLogger(__name__)
 

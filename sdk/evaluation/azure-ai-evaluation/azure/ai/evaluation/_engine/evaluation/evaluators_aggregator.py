@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .decorators import BaseEvaluator
+from ..decorators import BaseEvaluator
 
 logger = logging.getLogger(__name__)
 

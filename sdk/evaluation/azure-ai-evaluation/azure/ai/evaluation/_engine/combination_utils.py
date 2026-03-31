@@ -8,7 +8,7 @@ from __future__ import annotations
 from itertools import product
 from typing import Any, Dict, List
 
-from .config import TargetVariantConfig
+from .models.config import TargetVariantConfig
 
 
 def generate_args_combinations(model_cfg: TargetVariantConfig) -> List[Dict[str, Any]]:

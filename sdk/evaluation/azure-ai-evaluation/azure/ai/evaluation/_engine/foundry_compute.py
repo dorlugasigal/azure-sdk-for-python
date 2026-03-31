@@ -12,7 +12,7 @@ import textwrap
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-from .config import Config
+from .models.config import Config
 
 # Mapping from evaluator short names to Foundry built-in evaluator names
 EVALUATOR_TO_BUILTIN: Dict[str, str] = {

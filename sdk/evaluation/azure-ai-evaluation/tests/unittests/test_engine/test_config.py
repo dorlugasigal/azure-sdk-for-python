@@ -12,7 +12,7 @@ from typing import Any, Dict
 import pytest
 import yaml
 
-from azure.ai.evaluation._engine.config import (
+from azure.ai.evaluation._engine.models.config import (
     Config,
     ComputeConfig,
     ConnectionConfig,

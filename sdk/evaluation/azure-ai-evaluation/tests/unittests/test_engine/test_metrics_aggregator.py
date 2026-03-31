@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from azure.ai.evaluation._engine.evaluators_aggregator import (
+from azure.ai.evaluation._engine.evaluation.evaluators_aggregator import (
     AggregatedEvaluators,
     EvaluatorsAggregator,
 )

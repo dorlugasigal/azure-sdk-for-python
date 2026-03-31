@@ -182,7 +182,7 @@ class TestDatasetFactory:
         assert "jsonl" in BUILTIN_DATASET_TYPES
 
     def test_auto_type_detection_csv(self, temp_csv_file: Path) -> None:
-        from azure.ai.evaluation._engine.config import DatasetConfig
+        from azure.ai.evaluation._engine.models.config import DatasetConfig
 
         factory = DatasetFactory()
         cfg = DatasetConfig(name="test", type="csv", args={"data_path": str(temp_csv_file)})
@@ -191,7 +191,7 @@ class TestDatasetFactory:
         assert isinstance(ds, BaseDataset)
 
     def test_auto_type_detection_jsonl(self, temp_jsonl_file: Path) -> None:
-        from azure.ai.evaluation._engine.config import DatasetConfig
+        from azure.ai.evaluation._engine.models.config import DatasetConfig
 
         factory = DatasetFactory()
         cfg = DatasetConfig(name="test", type="jsonl", args={"data_path": str(temp_jsonl_file)})

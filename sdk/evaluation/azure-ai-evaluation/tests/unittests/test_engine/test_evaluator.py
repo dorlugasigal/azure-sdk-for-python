@@ -19,8 +19,8 @@ from azure.ai.evaluation._engine.models import EvaluationOutput, InferenceOutput
 # ---------------------------------------------------------------------------
 # Patch targets (module path within the evaluator module)
 # ---------------------------------------------------------------------------
-_MOD = "azure.ai.evaluation._engine.evaluator"
-_EXEC_MOD = "azure.ai.evaluation._engine.evaluation_executor"
+_MOD = "azure.ai.evaluation._engine.evaluation.evaluator"
+_EXEC_MOD = "azure.ai.evaluation._engine.evaluation.evaluation_executor"
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ def config_yaml_path(tmp_path: Path, minimal_config_dict: Dict[str, Any]) -> Pat
 
 def _build_evaluator(config_path: str, **kwargs):
     """Construct a ModelEvaluator with heavy dependencies mocked out."""
-    from azure.ai.evaluation._engine.evaluator import ModelEvaluator
+    from azure.ai.evaluation._engine.evaluation.evaluator import ModelEvaluator
 
     with (
         patch(f"{_MOD}.discover_components"),
@@ -202,7 +202,7 @@ class TestTargetRegistration:
 class TestArgsCombinations:
     def test_no_args(self, config_yaml_path: Path) -> None:
         from azure.ai.evaluation._engine.combination_utils import generate_args_combinations
-        from azure.ai.evaluation._engine.config import TargetVariantConfig
+        from azure.ai.evaluation._engine.models.config import TargetVariantConfig
 
         cfg = TargetVariantConfig(name="test")
         result = generate_args_combinations(cfg)
@@ -210,7 +210,7 @@ class TestArgsCombinations:
 
     def test_single_arg(self, config_yaml_path: Path) -> None:
         from azure.ai.evaluation._engine.combination_utils import generate_args_combinations
-        from azure.ai.evaluation._engine.config import TargetVariantConfig
+        from azure.ai.evaluation._engine.models.config import TargetVariantConfig
 
         cfg = TargetVariantConfig(name="test", args=[{"temperature": [0.5, 1.0]}])
         result = generate_args_combinations(cfg)
@@ -221,7 +221,7 @@ class TestArgsCombinations:
 
     def test_cartesian_product(self, config_yaml_path: Path) -> None:
         from azure.ai.evaluation._engine.combination_utils import generate_args_combinations
-        from azure.ai.evaluation._engine.config import TargetVariantConfig
+        from azure.ai.evaluation._engine.models.config import TargetVariantConfig
 
         cfg = TargetVariantConfig(
             name="test",

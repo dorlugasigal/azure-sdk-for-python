@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .evaluators_aggregator import EvaluatorsAggregator
-from .models import EvaluationOutput, InferenceOutput
-from .progress_tracker import ProgressTracker
+from ..models.evaluation_output import EvaluationOutput
+from ..models.inference_output import InferenceOutput
+from ..progress_tracker import ProgressTracker
 
 logger = logging.getLogger(__name__)
 

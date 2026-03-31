@@ -7,10 +7,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-from .combination_utils import generate_args_combinations, simplify_combination_names
-from .config import CloudConfig, TargetVariantConfig
-from .decorators import TARGET_REGISTRY, BaseTarget as EveeBaseTarget
-from .models import ExecutionContext
+from ..combination_utils import generate_args_combinations, simplify_combination_names
+from ..models.config import CloudConfig, TargetVariantConfig
+from ..decorators import TARGET_REGISTRY, BaseTarget as EveeBaseTarget
+from ..models.execution_context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 

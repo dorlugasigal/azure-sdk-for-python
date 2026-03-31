@@ -8,18 +8,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .config import Config, DatasetConfig
-from .dataset_factory import DatasetFactory
-from .decorators import EVALUATOR_REGISTRY, BaseDataset
-from .discovery import discover_components
+from ..models.config import Config, DatasetConfig
+from ..dataset_factory import DatasetFactory
+from ..decorators import EVALUATOR_REGISTRY, BaseDataset
+from ..discovery import discover_components
 from .evaluation_executor import EvaluationExecutor
-from .logging import setup_logger as _setup_logger
-from .models import ExecutionContext
-from .otel_trace_capture import OTelTraceCapture
+from ..logging import setup_logger as _setup_logger
+from ..models.execution_context import ExecutionContext
+from ..tracing.otel_trace_capture import OTelTraceCapture
 from .output_formatter import OutputFormatter
-from .target_factory import TargetFactory
-from .target_mapping import _apply_target_input_mapping, _apply_target_output_mapping
-from .trace_utils import _extract_tool_definitions_from_trace, _infer_tool_definitions_from_trace
+from ..targets.target_factory import TargetFactory
+from ..targets.target_mapping import _apply_target_input_mapping, _apply_target_output_mapping
+from ..tracing.trace_utils import _extract_tool_definitions_from_trace, _infer_tool_definitions_from_trace
 
 # Re-export so that existing ``from .evaluator import …`` statements keep working.
 __all__ = [

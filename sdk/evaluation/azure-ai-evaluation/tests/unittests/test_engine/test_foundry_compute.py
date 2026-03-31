@@ -19,7 +19,7 @@ from azure.ai.evaluation._engine.foundry_compute import (
     _build_portal_url,
     _resolve_project_endpoint,
 )
-from azure.ai.evaluation._engine.config import Config
+from azure.ai.evaluation._engine.models.config import Config
 
 
 # ---------------------------------------------------------------------------
