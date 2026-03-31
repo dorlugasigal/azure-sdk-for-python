@@ -36,6 +36,9 @@ ev run -c configs/demo_model_comparison.yaml
 
 Evaluates a deployed Foundry agent with built-in + custom evaluators.
 
+> **Prerequisites:** This demo requires a deployed agent on Azure AI Foundry.
+> Set `AZURE_AGENT_NAME` in `.env` to your agent's name.
+
 ```bash
 ev run -c configs/demo_agent_eval.yaml
 ```
@@ -49,6 +52,9 @@ ev run -c configs/demo_agent_eval.yaml
 ### 3. Multi-Framework Agent Comparison
 
 Compares weather agents built with Microsoft Agent Framework, OpenAI, and LangChain side-by-side.
+
+> **Prerequisites:** Requires Azure OpenAI credentials and the framework-specific
+> dependencies installed (`agent-framework`, `langchain`, etc.).
 
 ```bash
 ev run -c configs/demo_multi_framework.yaml
