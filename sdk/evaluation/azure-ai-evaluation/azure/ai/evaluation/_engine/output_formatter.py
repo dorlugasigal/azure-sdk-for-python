@@ -205,8 +205,8 @@ class OutputFormatter:
                     if isinstance(evaluators, dict):
                         for evaluator_name, evaluator_data in evaluators.items():
                             if isinstance(evaluator_data, dict):
-                                for metric_name, metric_value in evaluator_data.items():
-                                    row[f"outputs.{evaluator_name}.{metric_name}"] = metric_value
+                                for sub_name, sub_value in evaluator_data.items():
+                                    row[f"outputs.{evaluator_name}.{sub_name}"] = sub_value
 
                     rows.append(row)
 

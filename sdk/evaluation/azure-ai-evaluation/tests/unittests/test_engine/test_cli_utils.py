@@ -97,7 +97,7 @@ class TestOutputHelpers:
             "status": "completed",
             "total_records": 5,
             "models_evaluated": 1,
-            "aggregated_metrics": {"relevance": 0.95},
+            "aggregated_evaluators": {"relevance": 0.95},
         })
 
 

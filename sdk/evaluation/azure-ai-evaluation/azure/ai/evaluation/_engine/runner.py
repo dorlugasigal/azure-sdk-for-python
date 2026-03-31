@@ -8,7 +8,6 @@ from .compute import (
     ComputeBackend,
     FoundryComputeBackend,
     JobInfo,
-    JobStatus,
     LocalComputeBackend,
     RunContext,
 )

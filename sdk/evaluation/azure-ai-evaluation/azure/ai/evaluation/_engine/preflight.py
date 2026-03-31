@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from itertools import product
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from .config import Config, TargetVariantConfig
 

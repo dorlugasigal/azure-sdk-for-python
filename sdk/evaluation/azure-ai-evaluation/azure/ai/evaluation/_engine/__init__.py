@@ -29,13 +29,13 @@ __all__ = [
     "EvaluationOutput",
     "ExecutionContext",
     "InferenceOutput",
-    "AggregatedMetrics",
-    "MetricsAggregator",
+    "AggregatedEvaluators",
+    "EvaluatorsAggregator",
     "ProgressTracker",
     "run_preflight_checks",
     "get_console",
     "setup_logger",
-    "LocalMetricsLogger",
+    "LocalEvaluatorsLogger",
 ]
 
 # Lazy import mapping: attribute name → (module, name)
@@ -63,13 +63,13 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "EvaluationOutput": (".models", "EvaluationOutput"),
     "ExecutionContext": (".models", "ExecutionContext"),
     "InferenceOutput": (".models", "InferenceOutput"),
-    "AggregatedMetrics": (".evaluators_aggregator", "AggregatedMetrics"),
-    "MetricsAggregator": (".evaluators_aggregator", "MetricsAggregator"),
+    "AggregatedEvaluators": (".evaluators_aggregator", "AggregatedEvaluators"),
+    "EvaluatorsAggregator": (".evaluators_aggregator", "EvaluatorsAggregator"),
     "ProgressTracker": (".progress_tracker", "ProgressTracker"),
     "run_preflight_checks": (".preflight", "run_preflight_checks"),
     "get_console": (".logging", "get_console"),
     "setup_logger": (".logging", "setup_logger"),
-    "LocalMetricsLogger": (".logging", "LocalMetricsLogger"),
+    "LocalEvaluatorsLogger": (".logging", "LocalEvaluatorsLogger"),
 }
 
 

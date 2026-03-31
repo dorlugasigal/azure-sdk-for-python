@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 from .logger import get_console, setup_logger
-from .metrics_logger import LocalMetricsLogger
+from .evaluators_logger import LocalEvaluatorsLogger
 
 __all__ = [
     "get_console",
     "setup_logger",
-    "LocalMetricsLogger",
+    "LocalEvaluatorsLogger",
 ]

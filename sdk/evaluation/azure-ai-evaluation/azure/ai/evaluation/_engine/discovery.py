@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import ast
-import importlib
 from pathlib import Path
 from typing import Set
 

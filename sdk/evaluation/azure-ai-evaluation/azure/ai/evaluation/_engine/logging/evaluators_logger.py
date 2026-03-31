@@ -1,6 +1,6 @@
-"""Thread-safe local metrics logger for evaluation artifacts.
+"""Thread-safe local evaluators logger for evaluation artifacts.
 
-Persists individual inference results (JSONL) and aggregated metric
+Persists individual inference results (JSONL) and aggregated evaluator
 summaries (JSON) to the local filesystem.
 """
 from __future__ import annotations
@@ -15,11 +15,11 @@ from typing import Any, Dict
 from .logger import setup_logger
 
 
-class LocalMetricsLogger:
+class LocalEvaluatorsLogger:
     """Persist evaluation artifacts to the local filesystem.
 
     Appends individual inference results to log files in a thread-safe
-    manner and saves aggregated metric summaries as JSON files.
+    manner and saves aggregated evaluator summaries as JSON files.
     """
 
     def __init__(self, output_dir: str) -> None:
@@ -61,13 +61,13 @@ class LocalMetricsLogger:
     # ------------------------------------------------------------------
 
     def log_results(self, results: Any, results_path: Path) -> Path:
-        """Save aggregated metrics to a JSON file.
+        """Save aggregated evaluators to a JSON file.
 
         Parameters
         ----------
         results:
             An object exposing ``to_dict()``, ``run_id``, ``tags``, and
-            ``aggregated_metrics`` attributes (e.g. ``AggregatedMetrics``).
+            ``aggregated_evaluators`` attributes (e.g. ``AggregatedEvaluators``).
         results_path:
             Path to the raw results artefact.  The output file is derived
             from this path's stem.
@@ -85,10 +85,10 @@ class LocalMetricsLogger:
                 json.dump(results.to_dict(), fh, indent=2)
 
             self.logger.debug(
-                "Analyzed Results Summary for run ID %s\nTags: %s\nAggregated Metrics: %s\nSaved to: %s",
+                "Analyzed Results Summary for run ID %s\nTags: %s\nAggregated Evaluators: %s\nSaved to: %s",
                 results.run_id,
                 results.tags,
-                results.aggregated_metrics,
+                results.aggregated_evaluators,
                 output_path,
             )
             return output_path

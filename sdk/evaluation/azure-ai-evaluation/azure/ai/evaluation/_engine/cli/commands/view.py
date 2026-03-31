@@ -31,7 +31,7 @@ def _display_result_summary(summary_path: str) -> None:
         click.echo(json.dumps(data, indent=2))
 
     # Also display as a results table if the data has the right shape
-    if "aggregated_metrics" in data or "total_records" in data:
+    if "aggregated_evaluators" in data or "aggregated_metrics" in data or "total_records" in data:
         show_results_table(data)
 
 
@@ -95,7 +95,7 @@ def view(port, no_browser):
         exp_path = Path(exp_path)
         models = []
         all_records = []
-        all_metrics = {}
+        all_evaluators = {}
 
         def _find_primary_score(evaluator_name, values_dict):
             """Find the primary score from an evaluator's aggregated dict.
@@ -171,7 +171,7 @@ def view(port, no_browser):
             if times:
                 agg["average_response_time_ms"] = sum(times) / len(times)
 
-            all_metrics.update(agg)
+            all_evaluators.update(agg)
 
             # Build tags from first record's args
             base_name = model_name.split("__")[0] if "__" in model_name else model_name
@@ -199,7 +199,7 @@ def view(port, no_browser):
         return {
             "summary": {
                 "run_id": exp_path.name,
-                "aggregated_evaluators": all_metrics,
+                "aggregated_evaluators": all_evaluators,
                 "tags": {},
             },
             "records": all_records,
@@ -277,20 +277,20 @@ def view(port, no_browser):
                     info["num_runs"] = len(summaries)
                     info["created"] = e.stat().st_mtime
                     # Collect metric names and status from first summary
-                    metric_names = []
+                    evaluator_names = []
                     if summaries:
                         try:
                             with open(summaries[0]) as sf:
                                 first_summary = json.load(sf)
-                            agg = first_summary.get("aggregated_metrics", {})
+                            agg = first_summary.get("aggregated_evaluators", first_summary.get("aggregated_metrics", {}))
                             for k, v in agg.items():
                                 if isinstance(v, dict):
-                                    metric_names.extend(v.keys())
+                                    evaluator_names.extend(v.keys())
                                 else:
-                                    metric_names.append(k)
+                                    evaluator_names.append(k)
                         except Exception:
                             pass
-                    info["metrics"] = [m for m in metric_names if "fail" not in m.lower()
+                    info["metrics"] = [m for m in evaluator_names if "fail" not in m.lower()
                                        and m not in ("number_of_records", "average_response_time_ms")]
                     info["status"] = "Completed"
                     data.append(info)

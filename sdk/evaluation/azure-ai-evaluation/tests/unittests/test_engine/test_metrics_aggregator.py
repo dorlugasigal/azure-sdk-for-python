@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-"""Tests for MetricsAggregator and AggregatedMetrics."""
+"""Tests for EvaluatorsAggregator and AggregatedEvaluators."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from azure.ai.evaluation._engine.evaluators_aggregator import (
-    AggregatedMetrics,
-    MetricsAggregator,
+    AggregatedEvaluators,
+    EvaluatorsAggregator,
 )
 
 
@@ -106,53 +106,53 @@ def _write_jsonl(path: Path, records: List[Dict[str, Any]]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# AggregatedMetrics
+# AggregatedEvaluators
 # ---------------------------------------------------------------------------
 
 
-class TestAggregatedMetrics:
-    """Tests for the AggregatedMetrics dataclass."""
+class TestAggregatedEvaluators:
+    """Tests for the AggregatedEvaluators dataclass."""
 
     def test_to_dict(self) -> None:
-        metrics = AggregatedMetrics(
+        metrics = AggregatedEvaluators(
             run_id="run-1",
-            aggregated_metrics={"accuracy": 0.95},
+            aggregated_evaluators={"accuracy": 0.95},
             tags={"model_name": "gpt-4"},
         )
         result = metrics.to_dict()
 
         assert result["run_id"] == "run-1"
-        assert result["aggregated_metrics"] == {"accuracy": 0.95}
+        assert result["aggregated_evaluators"] == {"accuracy": 0.95}
         assert result["tags"] == {"model_name": "gpt-4"}
 
     def test_to_dict_default_tags(self) -> None:
-        metrics = AggregatedMetrics(run_id="run-2", aggregated_metrics={})
+        metrics = AggregatedEvaluators(run_id="run-2", aggregated_evaluators={})
         assert metrics.to_dict()["tags"] == {}
 
 
 # ---------------------------------------------------------------------------
-# MetricsAggregator
+# EvaluatorsAggregator
 # ---------------------------------------------------------------------------
 
 
-class TestMetricsAggregator:
-    """Tests for MetricsAggregator."""
+class TestEvaluatorsAggregator:
+    """Tests for EvaluatorsAggregator."""
 
     def test_initialization(self, mock_evaluator_registry: Dict[str, MagicMock]) -> None:
-        aggregator = MetricsAggregator(mock_evaluator_registry)
+        aggregator = EvaluatorsAggregator(mock_evaluator_registry)
         assert aggregator.evaluator_registry is mock_evaluator_registry
 
     # -- _add_evaluator_prefix ------------------------------------------------
 
     def test_add_evaluator_prefix(self) -> None:
-        result = MetricsAggregator._add_evaluator_prefix(
+        result = EvaluatorsAggregator._add_evaluator_prefix(
             "accuracy", {"score": 0.95, "f1": 0.9, "label": "good"}
         )
         assert result == {"accuracy - score": 0.95, "accuracy - f1": 0.9}
         assert "accuracy - label" not in result  # non-numeric filtered
 
     def test_add_evaluator_prefix_empty(self) -> None:
-        assert MetricsAggregator._add_evaluator_prefix("x", {}) == {}
+        assert EvaluatorsAggregator._add_evaluator_prefix("x", {}) == {}
 
     # -- analyze_results: success path ----------------------------------------
 
@@ -165,20 +165,20 @@ class TestMetricsAggregator:
         results_file = tmp_path / "results.jsonl"
         _write_jsonl(results_file, sample_results_data)
 
-        aggregator = MetricsAggregator(mock_evaluator_registry)
+        aggregator = EvaluatorsAggregator(mock_evaluator_registry)
         result = aggregator.analyze_results(results_file)
 
         assert result.run_id == "test-run-123"
-        assert result.aggregated_metrics["number_of_records"] == 2
+        assert result.aggregated_evaluators["number_of_records"] == 2
 
         # Each evaluator's aggregate() was called once
         mock_evaluator_registry["accuracy_evaluator"].aggregate.assert_called_once()
         mock_evaluator_registry["relevance_evaluator"].aggregate.assert_called_once()
 
         # Prefixed metrics present
-        assert "accuracy_evaluator - accuracy" in result.aggregated_metrics
-        assert "accuracy_evaluator - f1_score" in result.aggregated_metrics
-        assert "relevance_evaluator - relevance" in result.aggregated_metrics
+        assert "accuracy_evaluator - accuracy" in result.aggregated_evaluators
+        assert "accuracy_evaluator - f1_score" in result.aggregated_evaluators
+        assert "relevance_evaluator - relevance" in result.aggregated_evaluators
 
     def test_analyze_results_tags_from_first_record(
         self,
@@ -189,7 +189,7 @@ class TestMetricsAggregator:
         results_file = tmp_path / "results.jsonl"
         _write_jsonl(results_file, sample_results_data)
 
-        aggregator = MetricsAggregator(mock_evaluator_registry)
+        aggregator = EvaluatorsAggregator(mock_evaluator_registry)
         result = aggregator.analyze_results(results_file)
 
         assert result.tags["temperature"] == 0.7
@@ -205,11 +205,11 @@ class TestMetricsAggregator:
         results_file = tmp_path / "results.jsonl"
         _write_jsonl(results_file, sample_results_data)
 
-        aggregator = MetricsAggregator(mock_evaluator_registry)
+        aggregator = EvaluatorsAggregator(mock_evaluator_registry)
         result = aggregator.analyze_results(results_file)
 
         expected_avg = int((150 + 200) / 2)
-        assert result.aggregated_metrics["average_response_time_ms"] == expected_avg
+        assert result.aggregated_evaluators["average_response_time_ms"] == expected_avg
 
     # -- analyze_results: failures --------------------------------------------
 
@@ -222,11 +222,11 @@ class TestMetricsAggregator:
         results_file = tmp_path / "results.jsonl"
         _write_jsonl(results_file, sample_results_with_failures)
 
-        aggregator = MetricsAggregator(mock_evaluator_registry)
+        aggregator = EvaluatorsAggregator(mock_evaluator_registry)
         result = aggregator.analyze_results(results_file)
 
-        assert result.aggregated_metrics["accuracy_evaluator - Fail count"] == 1
-        assert result.aggregated_metrics["relevance_evaluator - Fail count"] == 2
+        assert result.aggregated_evaluators["accuracy_evaluator - Fail count"] == 1
+        assert result.aggregated_evaluators["relevance_evaluator - Fail count"] == 2
 
     def test_analyze_results_all_none_skips_aggregation(
         self,
@@ -247,11 +247,11 @@ class TestMetricsAggregator:
         _write_jsonl(results_file, records)
 
         mock_eval = MagicMock()
-        aggregator = MetricsAggregator({"eval_a": mock_eval})
+        aggregator = EvaluatorsAggregator({"eval_a": mock_eval})
         result = aggregator.analyze_results(results_file)
 
         mock_eval.aggregate.assert_not_called()
-        assert result.aggregated_metrics["eval_a - Fail count"] == 1
+        assert result.aggregated_evaluators["eval_a - Fail count"] == 1
 
     # -- analyze_results: evaluator not in registry ---------------------------
 
@@ -273,7 +273,7 @@ class TestMetricsAggregator:
         results_file = tmp_path / "results.jsonl"
         _write_jsonl(results_file, records)
 
-        aggregator = MetricsAggregator({})
+        aggregator = EvaluatorsAggregator({})
         with caplog.at_level("WARNING"):
             result = aggregator.analyze_results(results_file)
 
@@ -302,11 +302,11 @@ class TestMetricsAggregator:
         bad_eval = MagicMock()
         bad_eval.aggregate.side_effect = RuntimeError("boom")
 
-        aggregator = MetricsAggregator({"bad_eval": bad_eval})
+        aggregator = EvaluatorsAggregator({"bad_eval": bad_eval})
         result = aggregator.analyze_results(results_file)
 
         # Fallback marker emitted
-        assert result.aggregated_metrics.get("bad_eval - Aggregation Failed") == -1
+        assert result.aggregated_evaluators.get("bad_eval - Aggregation Failed") == -1
 
     # -- analyze_results: edge cases ------------------------------------------
 
@@ -314,15 +314,15 @@ class TestMetricsAggregator:
         results_file = tmp_path / "empty.jsonl"
         results_file.write_text("")
 
-        aggregator = MetricsAggregator({})
+        aggregator = EvaluatorsAggregator({})
         result = aggregator.analyze_results(results_file)
 
-        assert result.aggregated_metrics["number_of_records"] == 0
-        assert result.aggregated_metrics["average_response_time_ms"] == 0
+        assert result.aggregated_evaluators["number_of_records"] == 0
+        assert result.aggregated_evaluators["average_response_time_ms"] == 0
         assert result.run_id == ""
 
     def test_analyze_results_file_not_found(self, tmp_path: Path) -> None:
-        aggregator = MetricsAggregator({})
+        aggregator = EvaluatorsAggregator({})
         with pytest.raises(FileNotFoundError):
             aggregator.analyze_results(tmp_path / "nonexistent.jsonl")
 
@@ -330,7 +330,7 @@ class TestMetricsAggregator:
         results_file = tmp_path / "bad.jsonl"
         results_file.write_text("not valid json\n")
 
-        aggregator = MetricsAggregator({})
+        aggregator = EvaluatorsAggregator({})
         with pytest.raises(json.JSONDecodeError):
             aggregator.analyze_results(results_file)
 
@@ -357,9 +357,9 @@ class TestMetricsAggregator:
         mock_eval = MagicMock()
         mock_eval.aggregate.return_value = {"score": 0.9}
 
-        aggregator = MetricsAggregator({"legacy_eval": mock_eval})
+        aggregator = EvaluatorsAggregator({"legacy_eval": mock_eval})
         result = aggregator.analyze_results(results_file)
 
         mock_eval.aggregate.assert_called_once()
-        assert result.aggregated_metrics["legacy_eval - score"] == 0.9
-        assert result.aggregated_metrics["average_response_time_ms"] == 50
+        assert result.aggregated_evaluators["legacy_eval - score"] == 0.9
+        assert result.aggregated_evaluators["average_response_time_ms"] == 50

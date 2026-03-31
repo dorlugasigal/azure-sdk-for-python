@@ -74,7 +74,7 @@ class TestRunCommand:
             "total_records": 3,
             "models_evaluated": 1,
             "execution_type": "local",
-            "aggregated_metrics": {},
+            "aggregated_evaluators": {},
         }
         mock_runner_cls.return_value.run.return_value = mock_job
 
@@ -135,7 +135,7 @@ class TestRunCommand:
         mock_job.status = mock_status_cls.COMPLETED
         mock_job.metadata = {"execution_type": "local", "status": "completed",
                              "total_records": 1, "models_evaluated": 1,
-                             "aggregated_metrics": {}}
+                             "aggregated_evaluators": {}}
         mock_runner_cls.return_value.run.return_value = mock_job
 
         result = cli_runner.invoke(cli, [
@@ -201,7 +201,7 @@ class TestRunCommand:
             "total_records": 3,
             "models_evaluated": 1,
             "execution_type": "local",
-            "aggregated_metrics": {},
+            "aggregated_evaluators": {},
         }
         mock_runner_cls.return_value.run.return_value = mock_job
 
@@ -258,7 +258,7 @@ class TestRunCommand:
             "total_records": 3,
             "models_evaluated": 1,
             "execution_type": "local",
-            "aggregated_metrics": {},
+            "aggregated_evaluators": {},
         }
         mock_runner_cls.return_value.run.return_value = mock_job
 
@@ -309,7 +309,7 @@ class TestRunCommand:
             "total_records": 3,
             "models_evaluated": 1,
             "execution_type": "local",
-            "aggregated_metrics": {},
+            "aggregated_evaluators": {},
         }
         mock_runner_cls.return_value.run.return_value = mock_job
 

@@ -1,4 +1,4 @@
-"""Metrics aggregation for evaluation results."""
+"""Evaluator aggregation for evaluation results."""
 from __future__ import annotations
 
 import json
@@ -14,28 +14,28 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class AggregatedMetrics:
-    """Aggregated metrics for an evaluation run."""
+class AggregatedEvaluators:
+    """Aggregated evaluators for an evaluation run."""
 
     run_id: str
-    aggregated_metrics: Dict[str, Any]
+    aggregated_evaluators: Dict[str, Any]
     tags: Dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
             "run_id": self.run_id,
-            "aggregated_metrics": self.aggregated_metrics,
+            "aggregated_evaluators": self.aggregated_evaluators,
             "tags": self.tags,
         }
 
 
-class MetricsAggregator:
+class EvaluatorsAggregator:
     """Aggregates per-record evaluator scores across an entire dataset.
 
     Reads evaluation results (JSONL) produced by the engine, delegates
     aggregation to each registered evaluator's ``aggregate`` method, and
-    returns a single :class:`AggregatedMetrics` summary.
+    returns a single :class:`AggregatedEvaluators` summary.
     """
 
     def __init__(self, evaluator_registry: Dict[str, BaseEvaluator]) -> None:
@@ -46,7 +46,7 @@ class MetricsAggregator:
         self.evaluator_registry = evaluator_registry
 
     @staticmethod
-    def _add_evaluator_prefix(evaluator_name: str, aggregated_values: Dict[str, Any]) -> Dict[str, Any]:
+    def _add_evaluator_prefix(evaluator_name: str, aggregated_values: Dict[str, Any]) -> Dict[str, Any]:  # noqa: keep name
         """Prefix each numeric aggregated value with the evaluator name.
 
         Args:
@@ -62,7 +62,7 @@ class MetricsAggregator:
             if isinstance(value, (int, float))
         }
 
-    def analyze_results(self, results_path: Path) -> AggregatedMetrics:
+    def analyze_results(self, results_path: Path) -> AggregatedEvaluators:
         """Aggregate evaluator scores from a JSONL results file.
 
         Each line in the file is expected to be a JSON object produced by
@@ -72,7 +72,7 @@ class MetricsAggregator:
             results_path: Path to the ``.jsonl`` results file.
 
         Returns:
-            :class:`AggregatedMetrics` with per-evaluator aggregated scores,
+            :class:`AggregatedEvaluators` with per-evaluator aggregated scores,
             failure counts, and average response time.
 
         Raises:
@@ -120,7 +120,7 @@ class MetricsAggregator:
                 if count > 0
             }
 
-            all_metrics: Dict[str, Any] = {
+            all_evaluators: Dict[str, Any] = {
                 "number_of_records": record_count,
                 "average_response_time_ms": int(total_response_time / record_count) if record_count > 0 else 0,
                 **failures_report,
@@ -140,11 +140,11 @@ class MetricsAggregator:
                     aggregated = {"Aggregation Failed": -1}
 
                 prefixed = self._add_evaluator_prefix(evaluator_name, aggregated)
-                all_metrics.update(prefixed)
+                all_evaluators.update(prefixed)
 
-            return AggregatedMetrics(
+            return AggregatedEvaluators(
                 run_id=run_id,
-                aggregated_metrics=all_metrics,
+                aggregated_evaluators=all_evaluators,
                 tags=tags,
             )
 

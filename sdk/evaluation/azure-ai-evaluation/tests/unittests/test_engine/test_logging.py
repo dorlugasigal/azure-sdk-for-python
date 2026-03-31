@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-"""Tests for the logging module (setup_logger, get_console, LocalMetricsLogger)."""
+"""Tests for the logging module (setup_logger, get_console, LocalEvaluatorsLogger)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from azure.ai.evaluation._engine.logging import (
-    LocalMetricsLogger,
+    LocalEvaluatorsLogger,
     get_console,
     setup_logger,
 )
@@ -159,31 +159,31 @@ class TestGetConsole:
 
 
 # ---------------------------------------------------------------------------
-# LocalMetricsLogger
+# LocalEvaluatorsLogger
 # ---------------------------------------------------------------------------
 
-class TestLocalMetricsLogger:
-    """Tests for LocalMetricsLogger."""
+class TestLocalEvaluatorsLogger:
+    """Tests for LocalEvaluatorsLogger."""
 
     def test_init_creates_output_dir(self, tmp_path: Path) -> None:
         out = tmp_path / "metrics_output"
-        logger = LocalMetricsLogger(str(out))
+        logger = LocalEvaluatorsLogger(str(out))
         assert out.exists()
         assert logger.output_dir == str(out)
 
     def test_log_results_writes_json(self, tmp_path: Path) -> None:
         out = tmp_path / "results"
-        lgr = LocalMetricsLogger(str(out))
+        lgr = LocalEvaluatorsLogger(str(out))
 
         mock_results = MagicMock()
         mock_results.to_dict.return_value = {
             "run_id": "test-run",
-            "aggregated_metrics": {"accuracy": 0.85},
+            "aggregated_evaluators": {"accuracy": 0.85},
             "tags": {"model": "gpt"},
         }
         mock_results.run_id = "test-run"
         mock_results.tags = {"model": "gpt"}
-        mock_results.aggregated_metrics = {"accuracy": 0.85}
+        mock_results.aggregated_evaluators = {"accuracy": 0.85}
 
         results_path = Path("experiment_results.jsonl")
         output = lgr.log_results(mock_results, results_path)
@@ -192,11 +192,11 @@ class TestLocalMetricsLogger:
         with open(output) as f:
             data = json.load(f)
         assert data["run_id"] == "test-run"
-        assert data["aggregated_metrics"]["accuracy"] == 0.85
+        assert data["aggregated_evaluators"]["accuracy"] == 0.85
 
     def test_log_inference_result_appends_jsonl(self, tmp_path: Path) -> None:
         out = tmp_path / "inf_results"
-        lgr = LocalMetricsLogger(str(out))
+        lgr = LocalEvaluatorsLogger(str(out))
 
         mock_output = MagicMock()
         mock_output.to_dict.return_value = {"prediction": "yes", "score": 0.95}
@@ -211,7 +211,7 @@ class TestLocalMetricsLogger:
 
     def test_log_results_failure_raises(self, tmp_path: Path) -> None:
         out = tmp_path / "fail_results"
-        lgr = LocalMetricsLogger(str(out))
+        lgr = LocalEvaluatorsLogger(str(out))
 
         mock_results = MagicMock()
         mock_results.to_dict.side_effect = Exception("Serialization error")
@@ -221,7 +221,7 @@ class TestLocalMetricsLogger:
 
     def test_log_inference_result_failure_raises(self, tmp_path: Path) -> None:
         out = tmp_path / "fail_inf"
-        lgr = LocalMetricsLogger(str(out))
+        lgr = LocalEvaluatorsLogger(str(out))
 
         mock_output = MagicMock()
         mock_output.to_dict.side_effect = Exception("to_dict failed")

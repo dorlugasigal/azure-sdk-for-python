@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional
 
 from .combination_utils import generate_args_combinations, simplify_combination_names
 from .config import TargetVariantConfig

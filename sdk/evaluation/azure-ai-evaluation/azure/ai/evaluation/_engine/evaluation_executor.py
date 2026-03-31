@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .evaluators_aggregator import MetricsAggregator
+from .evaluators_aggregator import EvaluatorsAggregator
 from .models import EvaluationOutput, InferenceOutput
 from .progress_tracker import ProgressTracker
 
@@ -513,7 +513,7 @@ class EvaluationExecutor:
     def _aggregate_and_save_evaluators(self, results_path: Path, model_name: str) -> Dict[str, Any]:
         """Aggregate evaluator results and save summary.
 
-        Uses :class:`MetricsAggregator` for the core aggregation logic.
+        Uses :class:`EvaluatorsAggregator` for the core aggregation logic.
 
         Returns:
             Aggregated evaluators dictionary.
@@ -521,7 +521,7 @@ class EvaluationExecutor:
         if not results_path.exists():
             return {}
 
-        aggregator = MetricsAggregator(self.evaluators_registry)
+        aggregator = EvaluatorsAggregator(self.evaluators_registry)
         analysis = aggregator.analyze_results(results_path)
 
         # Reconstruct per-evaluator breakdown from prefixed metrics
@@ -529,7 +529,7 @@ class EvaluationExecutor:
         for evaluator_name in self.evaluators_registry:
             prefix = f"{evaluator_name} - "
             evaluator_values: Dict[str, Any] = {}
-            for key, value in analysis.aggregated_metrics.items():
+            for key, value in analysis.aggregated_evaluators.items():
                 if key.startswith(prefix):
                     short_key = key[len(prefix):]
                     if short_key == "Aggregation Failed":
@@ -540,12 +540,12 @@ class EvaluationExecutor:
                 aggregated[evaluator_name] = evaluator_values
 
         # Save summary
-        total_records = analysis.aggregated_metrics.get("number_of_records", 0)
+        total_records = analysis.aggregated_evaluators.get("number_of_records", 0)
         summary = {
             "model": model_name,
             "total_records": total_records,
             "aggregated_evaluators": aggregated,
-            "aggregated_metrics": aggregated,
+            "aggregated_metrics": aggregated,  # backward compat
         }
 
         summary_path = results_path.parent / f"{model_name}_summary.json"
