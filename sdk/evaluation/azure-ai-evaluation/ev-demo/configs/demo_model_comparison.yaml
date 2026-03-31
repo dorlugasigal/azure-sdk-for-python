@@ -1,23 +1,22 @@
 experiment:
-  name: "model-comparison"
+  name: "model-prompt-comparison"
+  version: "1.0.0"
+  description: "Compare multiple models with different system prompts and sampling parameters"
 
   cloud:
     foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"
     foundry_project: "${AZURE_AI_PROJECT}"
     default_evaluator_deployment: "gpt-4.1-mini"
 
-  connections:
-    default:
-      azure_endpoint: "${AZURE_OPENAI_ENDPOINT}"
-      azure_deployment: "${AZURE_OPENAI_DEPLOYMENT}"
-      azure_ai_project: "${AZURE_AI_PROJECT}"
-
   targets:
-    - name: "model_compare"
+    - name: "qa_model"
       type: "azure_ai_model"
       deployment_name: ["gpt-4.1-mini", "gpt-4.1"]
       args:
-        - temperature: [0.3, 0.9]
+        - system_prompt:
+            - "You are a helpful assistant. Answer questions concisely."
+            - "You are an expert researcher. Provide detailed, thorough answers with examples."
+          temperature: [0.3, 0.9]
 
   dataset:
     name: "qa_data"
@@ -34,7 +33,15 @@ experiment:
       mapping:
         query: "dataset.question"
         response: "target.response"
+    - name: "f1_score"
+      mapping:
+        response: "dataset.answer"
+        ground_truth: "dataset.ground_truth"
     - name: "conciseness"
-      deployment_name: "gpt-4.1"
       mapping:
         response: "target.response"
+
+  connections:
+    default:
+      azure_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+      azure_deployment: "${AZURE_OPENAI_DEPLOYMENT}"

@@ -1,0 +1,52 @@
+experiment:
+  name: "multi-framework-comparison"
+  version: "1.0.0"
+  description: "Compare weather agents built with MAF, OpenAI, and LangChain frameworks"
+
+  cloud:
+    foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    default_evaluator_deployment: "gpt-4.1-mini"
+
+  targets:
+    - name: "weather_agent_local_maf"
+    - name: "weather_agent_openai"
+    - name: "weather_agent_langchain"
+
+  dataset:
+    name: "agent_queries"
+    type: "jsonl"
+    args:
+      data_path: "data/agent_eval_data.jsonl"
+
+  evaluators:
+    - name: "coherence"
+      mapping:
+        query: "dataset.query"
+        response: "target.response"
+    - name: "relevance"
+      mapping:
+        query: "dataset.query"
+        response: "target.response"
+    - name: "task_adherence"
+      mapping:
+        query: "dataset.query"
+        response: "target.output_items"
+    - name: "tool_selection"
+      mapping:
+        query: "dataset.query"
+        response: "target.output_items"
+        tool_definitions: "target.tool_definitions"
+    - name: "tool_call_accuracy"
+      mapping:
+        query: "dataset.query"
+        response: "target.output_items"
+        tool_definitions: "target.tool_definitions"
+    - name: "response_completeness"
+      mapping:
+        response: "target.response"
+
+  connections:
+    default:
+      azure_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+      azure_deployment: "${AZURE_OPENAI_DEPLOYMENT}"
+      azure_ai_project: "${AZURE_AI_PROJECT}"

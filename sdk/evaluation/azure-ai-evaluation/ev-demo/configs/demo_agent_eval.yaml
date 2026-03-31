@@ -1,48 +1,51 @@
 experiment:
-  name: "context7-remote-agent-evaluation"
-  description: "Evaluate Context7 MCP documentation agent hosted on Foundry"
+  name: "agent-evaluation"
+  version: "1.0.0"
+  description: "Evaluate a deployed Azure AI agent with built-in and custom evaluators"
 
   cloud:
     foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"
     foundry_project: "${AZURE_AI_PROJECT}"
-    default_evaluator_deployment_name: "gpt-4.1-mini"
-    app_insight: "${AZURE_APP_INSIGHTS_CONNECTION_STRING}"
+    default_evaluator_deployment: "gpt-4.1-mini"
 
   targets:
-    - name: "context7-docs-agent"
+    - name: "my-agent"
       type: "azure_ai_agent"
-      agent_name: "context7-docs-agent"
+      agent_name: "${AZURE_AGENT_NAME}"
 
   dataset:
-    name: "doc_queries"
+    name: "agent_queries"
     type: "jsonl"
     args:
-      data_path: "data/context7_eval_data.jsonl"
+      data_path: "data/agent_eval_data.jsonl"
 
   evaluators:
     - name: "coherence"
       mapping:
         query: "dataset.query"
         response: "target.response"
-
     - name: "relevance"
       deployment_name: "gpt-4.1"
       mapping:
         query: "dataset.query"
         response: "target.response"
-
     - name: "task_adherence"
       mapping:
         query: "dataset.query"
         response: "target.output_items"
-
-    - name: "intent_resolution"
+    - name: "tool_call_accuracy"
       mapping:
         query: "dataset.query"
         response: "target.output_items"
+        tool_definitions: "target.tool_definitions"
+    - name: "response_completeness"
+      mapping:
+        response: "target.response"
 
   connections:
     default:
       azure_endpoint: "${AZURE_OPENAI_ENDPOINT}"
-      azure_deployment: "gpt-4.1"
       azure_ai_project: "${AZURE_AI_PROJECT}"
+    custom_db:
+      endpoint: "${CUSTOM_SERVICE_ENDPOINT}"
+      api_key: "${CUSTOM_SERVICE_KEY}"

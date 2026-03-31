@@ -249,6 +249,7 @@ class TargetFactory:
                 self._sampling = {
                     p: config[p] for p in self._SAMPLING_PARAMS if p in config
                 }
+                self._system_prompt = config.get("system_prompt")
 
                 # Prefer cloud_config.foundry_endpoint; fall back to connection
                 azure_endpoint = ""
@@ -269,9 +270,13 @@ class TargetFactory:
                 :rtype: dict
                 """
                 query = _extract_query_field(input_data)
+                messages = []
+                if self._system_prompt:
+                    messages.append({"role": "system", "content": self._system_prompt})
+                messages.append({"role": "user", "content": query})
                 response = self._client.chat.completions.create(
                     model=self._deployment,
-                    messages=[{"role": "user", "content": query}],
+                    messages=messages,
                     **self._sampling,
                 )
                 return {"response": response.choices[0].message.content}

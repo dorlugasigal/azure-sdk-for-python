@@ -1,6 +1,7 @@
 experiment:
-  name: "custom-metric-demo"
-  description: "All-in-one demo project for local-evals — run with ev run or ev run -c configs/<config>.yaml"
+  name: "quickstart"
+  version: "1.0.0"
+  description: "Quick local evaluation with custom evaluators — no Azure required"
 
   dataset:
     name: "qa_data"
