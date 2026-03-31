@@ -179,16 +179,24 @@ try:
             if not cc and context and hasattr(context, 'cloud_config'):
                 cc = context.cloud_config
             if cc and getattr(cc, 'foundry_endpoint', ''):
+                import os
                 model_config = {
                     'azure_endpoint': cc.foundry_endpoint,
                     'azure_deployment': deployment_name or cc.default_evaluator_deployment,
                     'type': 'azure_openai',
                 }
-                from azure.identity import DefaultAzureCredential
-                self._evaluator = CoherenceEvaluator(
-                    model_config=model_config,
-                    credential=DefaultAzureCredential(),
-                )
+                api_key = os.environ.get("AZURE_API_KEY", "").strip()
+                if api_key:
+                    self._evaluator = CoherenceEvaluator(
+                        model_config=model_config,
+                        credential=api_key,
+                    )
+                else:
+                    from azure.identity import DefaultAzureCredential
+                    self._evaluator = CoherenceEvaluator(
+                        model_config=model_config,
+                        credential=DefaultAzureCredential(),
+                    )
 
         def compute(self, query='', response='', **kwargs):
             if self._evaluator:
