@@ -6,6 +6,12 @@ experiment:
     foundry_project: "${AZURE_AI_PROJECT}"
     default_evaluator_deployment: "gpt-4.1-mini"
 
+  connections:
+    default:
+      azure_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+      azure_deployment: "${AZURE_OPENAI_DEPLOYMENT}"
+      azure_ai_project: "${AZURE_AI_PROJECT}"
+
   targets:
     - name: "model_compare"
       type: "azure_ai_model"

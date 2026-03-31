@@ -508,7 +508,7 @@ class TargetFactory:
         :returns: Passthrough target class.
         :rtype: type
         """
-        from .decorators import BaseTarget
+        from ..decorators import BaseTarget
 
         class PassthroughTarget(BaseTarget):
             """Returns input data unchanged — used when no real target is configured."""

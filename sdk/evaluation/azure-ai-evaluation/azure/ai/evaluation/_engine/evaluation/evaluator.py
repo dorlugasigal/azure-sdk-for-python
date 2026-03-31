@@ -91,7 +91,7 @@ class ModelEvaluator:
 
     def _setup_logging(self) -> None:
         """Configure structured logging with a file handler in the experiment directory."""
-        _setup_logger(__name__, logs_path=str(self._current_experiment_dir))
+        self._logger = _setup_logger(__name__, logs_path=str(self._current_experiment_dir))
 
     def _setup_output_formatter(self) -> OutputFormatter:
         """Build the :class:`OutputFormatter` for AITK persistence and result building.

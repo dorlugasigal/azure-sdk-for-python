@@ -248,9 +248,14 @@ class Config(BaseModel):
             if target_cfg.type == "custom" and target_cfg.name not in TARGET_REGISTRY:
                 errors.append(f"Target '{target_cfg.name}' not found in registry")
 
-        # Validate evaluator names against registry
+        # Validate evaluator names against registry + built-in evaluators
+        try:
+            from ..cli.utils.constants import BUILTIN_EVALUATORS
+            builtin_names = {name for name, _, _ in BUILTIN_EVALUATORS}
+        except ImportError:
+            builtin_names = set()
         for eval_cfg in exp.evaluators:
-            if eval_cfg.name not in EVALUATOR_REGISTRY:
+            if eval_cfg.name not in EVALUATOR_REGISTRY and eval_cfg.name not in builtin_names:
                 errors.append(f"Evaluator '{eval_cfg.name}' not found in registry")
 
         # Validate dataset type against registry
