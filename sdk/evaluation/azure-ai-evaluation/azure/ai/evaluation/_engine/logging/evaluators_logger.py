@@ -78,7 +78,7 @@ class LocalEvaluatorsLogger:
             Path to the saved results JSON file.
         """
         try:
-            output_file = f"{results_path.stem}_results.json"
+            output_file = f"{results_path.stem.replace('_results', '')}_summary.json"
             output_path = Path(self.output_dir) / output_file
 
             with open(output_path, "w") as fh:
