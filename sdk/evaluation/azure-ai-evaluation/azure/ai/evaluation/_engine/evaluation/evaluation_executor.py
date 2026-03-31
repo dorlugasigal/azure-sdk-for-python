@@ -1,6 +1,7 @@
 """Evaluation execution logic — runs inference + evaluators on dataset records."""
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import time
@@ -154,7 +155,7 @@ class EvaluationExecutor:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
                     executor.submit(
-                        self.evaluate_record,
+                        contextvars.copy_context().run, self.evaluate_record,
                         record, run_id, model_config_name,
                         model_name, model_instance, **model_args,
                     )
@@ -203,7 +204,7 @@ class EvaluationExecutor:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [
                 executor.submit(
-                    self.evaluate_record,
+                    contextvars.copy_context().run, self.evaluate_record,
                     record, run_id, model_config_name, model_name,
                     model_instance, target_mapping=target_mapping, **model_args,
                 )
@@ -329,17 +330,62 @@ class EvaluationExecutor:
 
     @staticmethod
     def _extract_tools_from_output_items(model_output: Dict[str, Any]) -> None:
-        """Extract tool_definitions and tool_calls from output_items (Foundry agent responses).
+        """Extract tool_definitions and tool_calls from output_items.
 
-        Foundry agents return ``mcp_list_tools`` and ``mcp_call`` items directly
-        in output_items rather than via OTel traces.
+        Handles multiple formats:
+        - Foundry MCP agents: ``mcp_list_tools`` and ``mcp_call`` items
+        - OpenAI Responses API: ``tool_call`` entries in message content
+        - Standard conversation format: tool_call content in assistant messages
+
+        When tool_definitions are not explicitly provided, infers them from
+        tool_call content in the conversation (matching Vienna's approach).
         """
         output_items = model_output.get("output_items")
         if not isinstance(output_items, list):
             return
 
+        # --- Extract tool_calls ---
+        if "tool_calls" not in model_output:
+            tool_calls = []
+            for item in output_items:
+                if not isinstance(item, dict):
+                    continue
+
+                item_type = item.get("type", "")
+
+                # Foundry MCP format
+                if item_type == "mcp_call":
+                    tool_calls.append({
+                        "name": item.get("name", ""),
+                        "arguments": item.get("arguments", {}),
+                        "output": item.get("output", ""),
+                    })
+                    continue
+
+                # OpenAI/standard conversation format — tool_calls in content
+                content = item.get("content")
+                if isinstance(content, list):
+                    for entry in content:
+                        if isinstance(entry, dict) and entry.get("type") == "tool_call":
+                            args = entry.get("arguments", {})
+                            if isinstance(args, str):
+                                try:
+                                    args = json.loads(args)
+                                except (json.JSONDecodeError, ValueError):
+                                    pass
+                            tool_calls.append({
+                                "name": entry.get("name", ""),
+                                "arguments": args,
+                            })
+
+            if tool_calls:
+                model_output["tool_calls"] = tool_calls
+
+        # --- Extract tool_definitions ---
         if "tool_definitions" not in model_output:
-            tool_defs = []
+            tool_defs: List[Dict[str, Any]] = []
+
+            # 1. From MCP mcp_list_tools items
             for item in output_items:
                 if isinstance(item, dict) and item.get("type") == "mcp_list_tools":
                     for tool in item.get("tools", []):
@@ -349,21 +395,37 @@ class EvaluationExecutor:
                             "description": tool.get("description", tool.get("name", "")),
                             "parameters": tool.get("inputSchema", tool.get("parameters", {})),
                         })
+
+            # 2. Infer from tool_call content in messages (Vienna approach)
+            if not tool_defs:
+                inferred: Dict[str, Dict[str, Any]] = {}
+                all_tool_calls = model_output.get("tool_calls", [])
+                for tc in all_tool_calls:
+                    name = tc.get("name", "")
+                    if not name or name in inferred:
+                        continue
+                    args = tc.get("arguments", {})
+                    props = {}
+                    if isinstance(args, dict):
+                        for k, v in args.items():
+                            if isinstance(v, bool):
+                                props[k] = {"type": "boolean"}
+                            elif isinstance(v, int):
+                                props[k] = {"type": "integer"}
+                            elif isinstance(v, float):
+                                props[k] = {"type": "number"}
+                            else:
+                                props[k] = {"type": "string"}
+                    inferred[name] = {
+                        "type": "function",
+                        "name": name,
+                        "description": name,
+                        "parameters": {"type": "object", "properties": props},
+                    }
+                tool_defs = list(inferred.values())
+
             if tool_defs:
                 model_output["tool_definitions"] = tool_defs
-
-        if "tool_calls" not in model_output:
-            tool_calls = []
-            for item in output_items:
-                if isinstance(item, dict) and item.get("type") == "mcp_call":
-                    tool_calls.append({
-                        "name": item.get("name", ""),
-                        "arguments": item.get("arguments", {}),
-                        "output": item.get("output", ""),
-                        "server_label": item.get("server_label", ""),
-                    })
-            if tool_calls:
-                model_output["tool_calls"] = tool_calls
 
     @staticmethod
     def _resolve_tool_definitions(

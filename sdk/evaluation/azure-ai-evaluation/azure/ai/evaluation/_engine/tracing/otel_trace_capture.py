@@ -649,12 +649,6 @@ class OTelTraceCapture:
 
         from opentelemetry import trace as otel_trace
 
-        # Clear collectors for this invocation
-        with self._span_lock:
-            self._collected_spans.clear()
-        with self._log_lock:
-            self._collected_logs.clear()
-
         # Run target within a parent span
         with self._tracer.start_as_current_span(
             PARENT_TARGET_SPAN_NAME,

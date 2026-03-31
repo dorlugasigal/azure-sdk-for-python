@@ -93,7 +93,9 @@ class WeatherAgentOpenAITarget(BaseTarget):
             instructions="You are a helpful weather assistant. Use tools to answer. Be concise.",
         )
 
-        # Standard tool execution loop
+        # Standard tool execution loop — accumulate all output items
+        all_output_items = list(response.output)
+
         for _ in range(5):
             pending = [item for item in response.output if item.type == "function_call"]
             if not pending:
@@ -116,7 +118,38 @@ class WeatherAgentOpenAITarget(BaseTarget):
                 tools=TOOL_SCHEMAS,
                 previous_response_id=response.id,
             )
+            all_output_items.extend(response.output)
 
-        # Just return the response — engine handles the rest via OTel
-        return {"response": response.output_text or "", "tool_definitions": TOOL_SCHEMAS}
+        # Serialize the full conversation — engine extracts tool data from output_items
+        output_items = []
+        for item in all_output_items:
+            if item.type == "message":
+                # Serialize content parts (ResponseOutputText objects → dicts)
+                content_parts = []
+                for part in getattr(item, "content", []):
+                    text = getattr(part, "text", str(part)) if not isinstance(part, (str, dict)) else (part if isinstance(part, str) else part.get("text", ""))
+                    content_parts.append({"type": "text", "text": text})
+                output_items.append({
+                    "role": getattr(item, "role", "assistant"),
+                    "content": content_parts or [{"type": "text", "text": ""}],
+                    "type": "message",
+                })
+            elif item.type == "function_call":
+                output_items.append({
+                    "role": "assistant",
+                    "content": [{
+                        "type": "tool_call",
+                        "tool_call_id": getattr(item, "call_id", ""),
+                        "name": item.name,
+                        "arguments": json.loads(item.arguments) if isinstance(item.arguments, str) else item.arguments,
+                    }],
+                })
+            elif item.type == "function_call_output":
+                output_items.append({
+                    "role": "tool",
+                    "tool_call_id": getattr(item, "call_id", ""),
+                    "content": [{"type": "tool_result", "tool_result": getattr(item, "output", "")}],
+                })
+
+        return {"response": response.output_text or "", "output_items": output_items}
 
