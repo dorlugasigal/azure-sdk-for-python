@@ -5,7 +5,7 @@ description = "All-in-one demo project for local-evals"
 requires-python = ">=3.10"
 
 dependencies = [
-    "azure-ai-evaluation",
+    "azure-ai-evaluation[opentelemetry]",
     "python-dotenv>=1.0.0",
     "agent-framework[azure-ai]>=1.0.0rc5",
     "azure-ai-projects",

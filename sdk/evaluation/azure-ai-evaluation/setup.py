@@ -88,11 +88,9 @@ setup(
     ],
     extras_require={
         "redteam": ['pyrit==0.11.0;python_version>="3.10"'],
-        # Cap opentelemetry-sdk<1.39.0: v1.39.0+ removed LogData from opentelemetry.sdk._logs,
-        # breaking azure-monitor-opentelemetry-exporter 1.0.0b45. See https://github.com/Azure/azure-sdk-for-python/issues/44236
         "opentelemetry": [
-            "opentelemetry-sdk>=1.17.0,<1.39.0",
-            "opentelemetry-exporter-otlp-proto-http>=1.17.0,<1.39.0",
+            "opentelemetry-sdk>=1.17.0",
+            "opentelemetry-exporter-otlp-proto-http>=1.17.0",
             "azure-monitor-opentelemetry-exporter>=1.0.0b17",
             "opentelemetry-instrumentation-openai-v2>=2.0b0",
             "opentelemetry-instrumentation-langchain>=0.30.0",
