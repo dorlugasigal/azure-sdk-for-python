@@ -1,9 +1,10 @@
 experiment:
   name: "mixed-eval-demo"
 
-  compute:
-    type: "foundry"
-    azure_ai_project: "${AZURE_AI_PROJECT}"
+  cloud:
+    foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    foundry_project: "${AZURE_AI_PROJECT}"
+    default_evaluator_deployment_name: "gpt-4.1-mini"
 
   dataset:
     name: "qa_data"

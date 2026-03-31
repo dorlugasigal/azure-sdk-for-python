@@ -254,29 +254,23 @@ try:
     @_ev_evaluator(name='relevance')
     class _RelevanceEvEvaluator(_EvBaseEvaluator):
         """Bridge: real RelevanceEvaluator registered as @evaluator."""
-        def __init__(self, connections_registry=None, context=None, **kwargs):
+        def __init__(self, cloud_config=None, deployment_name=None, context=None, **kwargs):
             super().__init__(**kwargs)
             self._evaluator = None
-            conn = connections_registry or {}
-            if not conn and context and hasattr(context, 'connections_registry'):
-                conn = context.connections_registry or {}
-            if conn:
-                first = list(conn.values())[0] if conn else {}
-                if hasattr(first, 'model_dump'):
-                    first = first.model_dump()
-                elif not isinstance(first, dict) and hasattr(first, '__dict__'):
-                    first = dict(first)
-                if isinstance(first, dict) and 'azure_endpoint' in first:
-                    model_config = {
-                        'azure_endpoint': first['azure_endpoint'],
-                        'azure_deployment': first.get('azure_deployment', 'gpt-4o'),
-                        'type': 'azure_openai',
-                    }
-                    from azure.identity import DefaultAzureCredential
-                    self._evaluator = RelevanceEvaluator(
-                        model_config=model_config,
-                        credential=DefaultAzureCredential(),
-                    )
+            cc = cloud_config
+            if not cc and context and hasattr(context, 'cloud_config'):
+                cc = context.cloud_config
+            if cc and getattr(cc, 'foundry_endpoint', ''):
+                model_config = {
+                    'azure_endpoint': cc.foundry_endpoint,
+                    'azure_deployment': deployment_name or cc.default_evaluator_deployment,
+                    'type': 'azure_openai',
+                }
+                from azure.identity import DefaultAzureCredential
+                self._evaluator = RelevanceEvaluator(
+                    model_config=model_config,
+                    credential=DefaultAzureCredential(),
+                )
 
         def compute(self, query='', response='', **kwargs):
             if self._evaluator:

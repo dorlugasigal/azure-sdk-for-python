@@ -6,6 +6,7 @@ This keeps ``import azure.ai.evaluation._engine`` fast for CLI startup.
 from __future__ import annotations
 
 __all__ = [
+    "CloudConfig",
     "Config",
     "ConnectionConfig",
     "DatasetConfig",
@@ -40,6 +41,7 @@ __all__ = [
 
 # Lazy import mapping: attribute name → (module, name)
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+    "CloudConfig": (".config", "CloudConfig"),
     "Config": (".config", "Config"),
     "ConnectionConfig": (".config", "ConnectionConfig"),
     "DatasetConfig": (".config", "DatasetConfig"),

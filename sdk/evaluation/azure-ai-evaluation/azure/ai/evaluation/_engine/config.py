@@ -76,6 +76,8 @@ class EvaluatorConfig(BaseModel):
 
     name: str
     display_name: Optional[str] = None
+    deployment_name: Optional[str] = None
+    """Override cloud.default_evaluator_deployment for this evaluator."""
     mapping: Dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -140,6 +142,24 @@ class TargetVariantConfig(BaseModel):
         return self
 
 
+class CloudConfig(BaseModel):
+    """Cloud configuration for Azure AI services."""
+
+    model_config = ConfigDict(extra="allow")
+
+    foundry_endpoint: str = ""
+    """Azure OpenAI endpoint. Must end with /openai/v1."""
+
+    foundry_project: Optional[str] = None
+    """Azure AI Foundry project endpoint for remote compute."""
+
+    default_evaluator_deployment: str = "gpt-4.1-mini"
+    """Default deployment name for LLM-based evaluators."""
+
+    app_insights: Optional[str] = None
+    """Application Insights connection string for trace export (TBD)."""
+
+
 class ComputeConfig(BaseModel):
     """Compute backend configuration."""
 
@@ -163,6 +183,7 @@ class ExperimentConfig(BaseModel):
     dataset: Optional[DatasetConfig] = None
     evaluators: List[EvaluatorConfig] = Field(default_factory=list)
     compute: Optional[ComputeConfig] = None
+    cloud: Optional[CloudConfig] = None
     connections: Any = Field(default_factory=list)
 
     @model_validator(mode="before")

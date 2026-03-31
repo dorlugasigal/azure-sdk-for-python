@@ -25,6 +25,7 @@ from typing import List, Optional, Tuple
 import click
 
 from .commands.clear import clear
+from .commands.cloud import cloud
 from .commands.compute import compute
 from .commands.connection import connection
 from .commands.dataset import dataset
@@ -44,7 +45,7 @@ _DEFAULT_ENV_FILE = ".env"
 
 # Commands that should NOT be delegated to the project environment.
 # These operate on the file system directly and don't need project-specific packages.
-_NON_DELEGATED_COMMANDS = frozenset({"new", "dataset", "evaluator", "clear", "view", "connection"})
+_NON_DELEGATED_COMMANDS = frozenset({"new", "dataset", "evaluator", "clear", "view", "connection", "cloud"})
 
 # CLI flags that accept file / directory path arguments
 _PATH_FLAGS = frozenset({
@@ -95,6 +96,7 @@ cli.add_command(validate)
 cli.add_command(discover)
 cli.add_command(view)
 cli.add_command(clear)
+cli.add_command(cloud)
 cli.add_command(compute)
 cli.add_command(target_cmd, name="target")
 cli.add_command(evaluator)

@@ -1,10 +1,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-"""connection command — manage model connections.
+"""connection command — manage custom model connections.
 
 Provides ``connection list``, ``connection add``, and ``connection discover``
-subcommands for viewing, creating, and auto-discovering Azure OpenAI
+subcommands for viewing, creating, and auto-discovering custom Azure OpenAI
 connections in the project configuration.
+
+Note: For Azure AI service cloud settings (foundry endpoint, project, and
+default evaluator deployment), use ``ev cloud`` instead.
 """
 from __future__ import annotations
 
@@ -94,7 +97,12 @@ def _get_connections(cfg_data: dict) -> list:
 @click.help_option("--help", "-h")
 @click.pass_context
 def connection(ctx, config):
-    """Manage model connections."""
+    """Manage custom model connections.
+
+    For Azure AI cloud settings (foundry endpoint, project, default deployment),
+    use 'ev cloud' instead. This command is for managing additional custom
+    connections to specific Azure OpenAI endpoints.
+    """
     ctx.ensure_object(dict)
     config = resolve_config_path(config)
     ctx.obj["config"] = config

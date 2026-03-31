@@ -192,7 +192,7 @@ try:
     @_ev_evaluator(name='f1_score')
     class _F1ScoreEvEvaluator(_EvBaseEvaluator):
         """Bridge: real F1ScoreEvaluator registered as @evaluator."""
-        def __init__(self, connections_registry=None, context=None, **kwargs):
+        def __init__(self, context=None, **kwargs):
             super().__init__(**kwargs)
             self._evaluator = F1ScoreEvaluator()
 

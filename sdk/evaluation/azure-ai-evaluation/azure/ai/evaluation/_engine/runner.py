@@ -76,13 +76,22 @@ class ExperimentRunner:
 
     def _select_backend(self, config: Config, remote_compute: bool) -> ComputeBackend:
         """Select compute backend based on config and --remote flag."""
-        compute_config = getattr(config.experiment, "compute", None)
+        cloud_config = getattr(config.experiment, "cloud", None)
 
         if remote_compute:
             # User explicitly requested remote
             endpoint = None
-            if compute_config:
-                endpoint = compute_config.azure_ai_project
+
+            # Prefer cloud_config (new canonical location)
+            if cloud_config and cloud_config.foundry_project:
+                endpoint = cloud_config.foundry_project
+
+            # Legacy fallback: compute block
+            if not endpoint:
+                compute_config = getattr(config.experiment, "compute", None)
+                if compute_config:
+                    endpoint = compute_config.azure_ai_project
+
             if not endpoint:
                 for conn in (config.experiment.connections or []):
                     endpoint = getattr(conn, "azure_ai_project", None)
@@ -94,7 +103,7 @@ class ExperimentRunner:
 
             raise ValueError(
                 "Remote compute requested (--remote) but no project endpoint configured. "
-                "Set 'compute.azure_ai_project' in your config."
+                "Set 'cloud.foundry_project' in your config."
             )
 
         # Default: always local unless --remote was explicitly requested

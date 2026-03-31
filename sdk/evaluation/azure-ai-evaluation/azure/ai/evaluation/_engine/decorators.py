@@ -153,6 +153,7 @@ def evaluator(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
 
                 # Create inner metric instance — pass config values + extra kwargs
                 cls_sig = inspect.signature(cls.__init__)
+                cloud = self.context.cloud_config if self.context else None
                 init_params: Dict[str, Any] = {}
                 for param_name_inner, param in cls_sig.parameters.items():
                     if param_name_inner == "self":
@@ -161,6 +162,15 @@ def evaluator(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
                         init_params[param_name_inner] = self.context.connections_registry if self.context else {}
                     elif param_name_inner == "context":
                         init_params[param_name_inner] = self.context
+                    elif param_name_inner == "cloud_config":
+                        init_params[param_name_inner] = cloud
+                    elif param_name_inner == "azure_endpoint":
+                        init_params[param_name_inner] = cloud.foundry_endpoint if cloud else None
+                    elif param_name_inner == "deployment_name":
+                        init_params[param_name_inner] = (
+                            config.get("deployment_name")
+                            or (cloud.default_evaluator_deployment if cloud else None)
+                        )
                     elif param_name_inner in extra_kwargs:
                         init_params[param_name_inner] = extra_kwargs[param_name_inner]
                     elif param_name_inner in config:

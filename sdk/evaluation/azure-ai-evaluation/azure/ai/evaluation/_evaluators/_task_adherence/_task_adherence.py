@@ -278,23 +278,21 @@ try:
     @_evee_evaluator(name='task_adherence')
     class _TaskAdherenceEveeEvaluator(_EveeBaseEvaluator):
         """Bridge: real TaskAdherenceEvaluator registered as evee @evaluator."""
-        def __init__(self, connections_registry=None, context=None, **kwargs):
+        def __init__(self, cloud_config=None, deployment_name=None, context=None, **kwargs):
             super().__init__(**kwargs)
-            model_config = self._resolve_model_config(connections_registry)
+            model_config = self._resolve_model_config(cloud_config, deployment_name, context)
             self._evaluator = TaskAdherenceEvaluator(model_config=model_config) if model_config else None
 
         @staticmethod
-        def _resolve_model_config(connections_registry):
-            if not connections_registry:
-                return None
-            conn = connections_registry.get("default", {})
-            if hasattr(conn, "model_dump"):
-                conn = conn.model_dump()
-            if not isinstance(conn, dict) or not conn.get("azure_endpoint"):
+        def _resolve_model_config(cloud_config, deployment_name=None, context=None):
+            cc = cloud_config
+            if not cc and context and hasattr(context, 'cloud_config'):
+                cc = context.cloud_config
+            if not cc or not getattr(cc, 'foundry_endpoint', ''):
                 return None
             return {
-                "azure_endpoint": conn["azure_endpoint"],
-                "azure_deployment": conn.get("azure_deployment", "gpt-4.1-mini"),
+                "azure_endpoint": cc.foundry_endpoint,
+                "azure_deployment": deployment_name or cc.default_evaluator_deployment,
                 "type": "azure_openai",
             }
 

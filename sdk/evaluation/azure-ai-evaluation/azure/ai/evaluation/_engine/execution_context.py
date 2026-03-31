@@ -11,6 +11,7 @@ class ExecutionContext:
     """Context provided to experiment components during execution."""
 
     connections_registry: Dict[str, Any] = field(default_factory=dict)
+    cloud_config: Optional[Any] = None
     experiment_name: str = ""
     experiment_version: str = ""
     experiment_dir: Optional[Path] = None

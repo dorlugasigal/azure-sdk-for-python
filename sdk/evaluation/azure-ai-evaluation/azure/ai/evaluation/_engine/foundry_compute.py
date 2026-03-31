@@ -136,6 +136,12 @@ def _resolve_project_endpoint(
     if project_endpoint:
         return project_endpoint.rstrip("/")
 
+    # Prefer cloud_config (new canonical location)
+    cloud_config = config.experiment.cloud
+    if cloud_config and cloud_config.foundry_project:
+        return cloud_config.foundry_project.rstrip("/")
+
+    # Legacy fallback: compute block
     compute = config.experiment.compute
     if compute and compute.azure_ai_project:
         return compute.azure_ai_project.rstrip("/")
@@ -148,7 +154,7 @@ def _resolve_project_endpoint(
 
     raise ValueError(
         "No Foundry project endpoint found. Provide 'project_endpoint', set "
-        "'experiment.compute.azure_ai_project' in the config, or add a connection "
+        "'experiment.cloud.foundry_project' in the config, or add a connection "
         "with an endpoint."
     )
 
@@ -207,8 +213,9 @@ def _build_testing_criteria(
 
             # LLM-based evaluators require a deployment
             if builtin_name not in NLP_EVALUATORS:
+                effective_deployment = evaluator_config.deployment_name or deployment_name or "gpt-4.1-mini"
                 criteria_entry["initialization_parameters"] = {
-                    "deployment_name": deployment_name or "gpt-4.1-mini",
+                    "deployment_name": effective_deployment,
                 }
 
         elif project_client:
@@ -426,12 +433,13 @@ def _upload_custom_metric(
         logger.warning("Failed to upload custom evaluator '%s': %s", evaluator_name, exc)
         return None
 
+    effective_deployment = evaluator_config.deployment_name or deployment_name or "gpt-4.1-mini"
     criteria_entry: Dict[str, Any] = {
         "type": "azure_ai_evaluator",
         "name": evaluator_name,
         "evaluator_name": evaluator_name,
         "initialization_parameters": {
-            "deployment_name": deployment_name or "gpt-4.1-mini",
+            "deployment_name": effective_deployment,
             "pass_threshold": 3.0 if evaluator_name in _ORDINAL_1_5_EVALUATORS else 0.5,
         },
     }
@@ -532,16 +540,9 @@ def run_remote_evaluation(
 
     discover_components()
 
-    # Derive deployment_name for LLM-based evaluators from azure_ai_model targets
-    _evaluator_deployment = None
-    for t in config.experiment.targets:
-        if getattr(t, "type", "custom") == "azure_ai_model":
-            dep = t.deployment_name
-            if isinstance(dep, list) and dep:
-                _evaluator_deployment = dep[0]
-            elif isinstance(dep, str):
-                _evaluator_deployment = dep
-            break
+    # Resolve default evaluator deployment from cloud config
+    cloud_config = config.experiment.cloud
+    _evaluator_deployment = (cloud_config.default_evaluator_deployment if cloud_config else None)
     testing_criteria = _build_testing_criteria(config, _evaluator_deployment, project_client=project_client)
 
     # --- Expand model variants (Cartesian product) --------------------------

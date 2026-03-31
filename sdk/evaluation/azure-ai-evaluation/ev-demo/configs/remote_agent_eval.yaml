@@ -2,9 +2,11 @@ experiment:
   name: "context7-remote-agent-evaluation"
   description: "Evaluate Context7 MCP documentation agent hosted on Foundry"
 
-  compute:
-    type: "foundry"
-    azure_ai_project: "${AZURE_AI_PROJECT}"
+  cloud:
+    foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    foundry_project: "${AZURE_AI_PROJECT}"
+    default_evaluator_deployment_name: "gpt-4.1-mini"
+    app_insight: "${AZURE_APP_INSIGHTS_CONNECTION_STRING}"
 
   targets:
     - name: "context7-docs-agent"
@@ -24,6 +26,7 @@ experiment:
         response: "model.response"
 
     - name: "relevance"
+      deployment_name: "gpt-4.1"
       mapping:
         query: "dataset.query"
         response: "model.response"

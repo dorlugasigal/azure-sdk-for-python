@@ -132,6 +132,7 @@ class ModelEvaluator:
         """
         return ExecutionContext(
             connections_registry=self.connections_registry,
+            cloud_config=self.config.experiment.cloud,
             experiment_name=self.config.experiment.name,
             experiment_version=self.config.experiment.version,
             experiment_dir=self._current_experiment_dir,
@@ -150,6 +151,8 @@ class ModelEvaluator:
             config=self.config,
             execution_context=self.execution_context,
             connections_registry=self.connections_registry,
+            cloud_config=self.config.experiment.cloud,
+            logger=self._logger,
         )
         return self._target_factory.register_targets(model_filter)
 

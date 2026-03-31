@@ -8,7 +8,7 @@ import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from .combination_utils import generate_args_combinations, simplify_combination_names
-from .config import TargetVariantConfig
+from .config import CloudConfig, TargetVariantConfig
 from .decorators import TARGET_REGISTRY, BaseTarget as EveeBaseTarget
 from .models import ExecutionContext
 
@@ -145,6 +145,8 @@ class TargetFactory:
     :param config: Experiment configuration object.
     :param execution_context: Shared execution context for all targets.
     :param connections_registry: Named connection definitions.
+    :param cloud_config: Cloud configuration for Azure AI endpoints.
+    :param logger: Optional logger instance.
     """
 
     def __init__(
@@ -152,10 +154,14 @@ class TargetFactory:
         config: Any,
         execution_context: ExecutionContext,
         connections_registry: Dict[str, Any],
+        cloud_config: Optional[CloudConfig] = None,
+        logger: Optional[logging.Logger] = None,
     ) -> None:
         self._config = config
         self._execution_context = execution_context
         self._connections_registry = connections_registry
+        self._cloud_config = cloud_config
+        self._logger = logger or logging.getLogger(__name__)
 
         # Dispatch table: target_type → (class_factory, arg_combinator)
         self._target_dispatchers: Dict[
@@ -225,6 +231,7 @@ class TargetFactory:
         :rtype: type
         """
         connections_registry = self._connections_registry
+        cloud_config = self._cloud_config
 
         class AzureAIModelTarget(EveeBaseTarget):
             """Wraps an Azure-hosted model behind the OpenAI chat API."""
@@ -243,10 +250,15 @@ class TargetFactory:
                     p: config[p] for p in self._SAMPLING_PARAMS if p in config
                 }
 
-                conn = _resolve_connection(
-                    target_cfg.connection_name, connections_registry, context,
-                )
-                azure_endpoint = conn.get("azure_endpoint", "")
+                # Prefer cloud_config.foundry_endpoint; fall back to connection
+                azure_endpoint = ""
+                if cloud_config and cloud_config.foundry_endpoint:
+                    azure_endpoint = cloud_config.foundry_endpoint
+                else:
+                    conn = _resolve_connection(
+                        target_cfg.connection_name, connections_registry, context,
+                    )
+                    azure_endpoint = conn.get("azure_endpoint", "")
                 self._client = _setup_azure_openai_client(azure_endpoint)
 
             def infer(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -350,7 +362,8 @@ class TargetFactory:
     ) -> Optional[str]:
         """Resolve the Azure AI project endpoint using multiple fallbacks.
 
-        Resolution order: ``target_cfg.azure_ai_project`` → connection →
+        Resolution order: ``target_cfg.azure_ai_project`` →
+        ``cloud_config.foundry_project`` → connection →
         ``compute.azure_ai_project``.
 
         :param target_cfg: Target variant configuration.
@@ -360,6 +373,9 @@ class TargetFactory:
         endpoint = getattr(target_cfg, "azure_ai_project", None)
         if endpoint:
             return endpoint
+
+        if self._cloud_config and self._cloud_config.foundry_project:
+            return self._cloud_config.foundry_project
 
         conn_name = getattr(target_cfg, "connection_name", None) or "default"
         conn = self._connections_registry.get(conn_name)

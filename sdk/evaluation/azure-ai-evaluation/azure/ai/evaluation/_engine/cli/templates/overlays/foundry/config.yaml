@@ -4,9 +4,10 @@ experiment:
   description: "{description}"
   output_path: "output"
 
-  compute:
-    type: "foundry"
-    azure_ai_project: "${AZURE_AI_PROJECT_ENDPOINT}"
+  cloud:
+    foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    foundry_project: "${AZURE_AI_PROJECT_ENDPOINT}"
+    default_evaluator_deployment_name: "gpt-4.1-mini"
 
   targets:
     - name: "baseline"

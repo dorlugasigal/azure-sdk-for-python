@@ -24,10 +24,10 @@ def get_missing_params(
         signature: Function signature to check against.
         config: Configuration dict to validate.
         ignore: Optional parameter names to skip (defaults to
-            ``["connections_registry", "context"]``).
+            ``["connections_registry", "context", "cloud_config", "deployment_name"]``).
     """
     if ignore is None:
-        ignore = ["connections_registry", "context"]
+        ignore = ["connections_registry", "context", "cloud_config", "deployment_name"]
     required = [
         p
         for p, info in signature.parameters.items()
