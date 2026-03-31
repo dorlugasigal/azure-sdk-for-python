@@ -6,6 +6,28 @@ from __future__ import annotations
 import yaml
 
 
+def _ensure_quoted_strings(data):
+    """Wrap plain string values in DoubleQuotedScalarString so ruamel preserves quotes."""
+    try:
+        from ruamel.yaml.scalarstring import DoubleQuotedScalarString
+    except ImportError:
+        return
+
+    if isinstance(data, dict):
+        for key in list(data.keys()):
+            val = data[key]
+            if isinstance(val, str) and not isinstance(val, DoubleQuotedScalarString):
+                data[key] = DoubleQuotedScalarString(val)
+            elif isinstance(val, (dict, list)):
+                _ensure_quoted_strings(val)
+    elif isinstance(data, list):
+        for i, val in enumerate(data):
+            if isinstance(val, str) and not isinstance(val, DoubleQuotedScalarString):
+                data[i] = DoubleQuotedScalarString(val)
+            elif isinstance(val, (dict, list)):
+                _ensure_quoted_strings(val)
+
+
 def load_yaml_raw(path: str) -> dict:
     """Load YAML file using PyYAML (safe_load)."""
     with open(path, encoding="utf-8") as f:
@@ -37,6 +59,7 @@ def write_yaml_ruamel(path: str, data) -> None:
 
         ry = YAML()
         ry.preserve_quotes = True  # type: ignore[assignment]
+        _ensure_quoted_strings(data)
         with open(path, "w", encoding="utf-8") as f:
             ry.dump(data, f)
     except ImportError:
