@@ -79,32 +79,21 @@ def _resolve_connection(
 
 
 def _setup_azure_openai_client(azure_endpoint: str) -> "openai.OpenAI":
-    """Create an :class:`openai.OpenAI` client for Azure AI.
-
-    Uses ``AZURE_API_KEY`` environment variable if set, otherwise falls back
-    to ``DefaultAzureCredential`` (requires ``az login``).
+    """Create an :class:`openai.OpenAI` client authenticated via ``DefaultAzureCredential``.
 
     :param azure_endpoint: The Azure AI endpoint URL.
     :returns: Configured OpenAI client.
     :rtype: openai.OpenAI
     """
-    import os
-
-    from openai import OpenAI
-
-    base_url = azure_endpoint.rstrip("/")
-    if not base_url.endswith("/openai/v1"):
-        base_url = f"{base_url}/openai/v1"
-
-    api_key = os.environ.get("AZURE_API_KEY", "").strip()
-    if api_key:
-        return OpenAI(base_url=base_url, api_key=api_key)
-
     from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+    from openai import OpenAI
 
     token_provider = get_bearer_token_provider(
         DefaultAzureCredential(), "https://ai.azure.com/.default",
     )
+
+    base_url = f"{azure_endpoint.rstrip('/')}/openai/v1"
+
     return OpenAI(base_url=base_url, api_key=token_provider)
 
 

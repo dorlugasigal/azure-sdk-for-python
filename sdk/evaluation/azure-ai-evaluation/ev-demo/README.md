@@ -205,15 +205,10 @@ cp .env.sample .env
 # Edit with your Azure credentials
 ```
 
-**Authentication** (choose one):
-- **API Key:** Set `AZURE_API_KEY` in `.env` — simplest, no `az login` needed
-- **Azure CLI:** Run `az login` — uses `DefaultAzureCredential` automatically
-
 Required for Azure demos:
 - `AZURE_OPENAI_ENDPOINT` — Azure OpenAI endpoint (ending with /openai/v1)
 - `AZURE_AI_PROJECT` — Foundry project endpoint
 - `AZURE_OPENAI_DEPLOYMENT` — Default model deployment name
-- `AZURE_API_KEY` — API key (alternative to `az login`)
 
 For agent demo:
 - `AZURE_AGENT_NAME` — Deployed agent name in Foundry
