@@ -7,7 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .evaluators_aggregator import MetricsAggregator
 from .models import EvaluationOutput, InferenceOutput
@@ -55,12 +55,12 @@ class EvaluationExecutor:
         total_failed = 0
         first_error = None
         lock = threading.Lock()
+        variant_results: List[Tuple[int, Optional[str]]] = []
 
-        # Prepare per-variant work items
-        variant_items = []
-        for model_name, model_data in targets_registry.items():
-            output_path = self._experiment_dir / f"{model_name}_results.jsonl"
-            variant_items.append((model_name, model_data, output_path))
+        variant_items = [
+            (name, data, self._experiment_dir / f"{name}_results.jsonl")
+            for name, data in targets_registry.items()
+        ]
 
         try:
             from rich.progress import (
@@ -75,70 +75,39 @@ class EvaluationExecutor:
                 MofNCompleteColumn(),
                 TimeElapsedColumn(),
             ) as progress:
-                # Create a task per variant
-                tasks = {}
-                for model_name, _, _ in variant_items:
-                    tasks[model_name] = progress.add_task(
-                        f"  {model_name}", total=len(records)
+                tasks = {
+                    name: progress.add_task(f"  {name}", total=len(records))
+                    for name, _, _ in variant_items
+                }
+
+                def _on_advance(model_name: str) -> None:
+                    progress.advance(tasks[model_name])
+
+                def _run_and_collect(model_name, model_data, output_path):
+                    result = self._execute_single_variant(
+                        model_name, model_data, output_path, records,
+                        max_workers, lock, _on_advance,
                     )
-
-                def _run_variant(model_name, model_data, output_path):
-                    """Run a single variant, updating its progress task."""
-                    nonlocal total_failed, first_error
-                    model_instance = model_data["model"]
-                    model_args = model_data["args"]
-                    model_config_name = model_data["config"].name
-
-                    run_name = f"run_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                    run_id = run_name
-
-                    variant_failed = 0
-                    try:
-                        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                            futures = []
-                            for record in records:
-                                future = executor.submit(
-                                    self.evaluate_record,
-                                    record, run_id, model_config_name,
-                                    model_name, model_instance, **model_args,
-                                )
-                                futures.append(future)
-
-                            for future in as_completed(futures):
-                                try:
-                                    eval_output = future.result()
-                                    self._save_result(eval_output, output_path)
-                                except Exception as e:
-                                    variant_failed += 1
-                                    logger.error("Record evaluation failed: %s", e)
-                                    with lock:
-                                        if first_error is None:
-                                            first_error = str(e)
-                                progress.advance(tasks[model_name])
-
-                        self._aggregate_and_save_evaluators(output_path, model_name)
-                    except Exception as e:
-                        variant_failed = len(records)
-                        logger.error("Variant '%s' failed: %s", model_name, e)
-                        with lock:
-                            if first_error is None:
-                                first_error = str(e)
-
                     with lock:
-                        total_failed += variant_failed
+                        variant_results.append(result)
 
-                # Run all variants in parallel threads
                 threads = []
                 for model_name, model_data, output_path in variant_items:
                     t = threading.Thread(
-                        target=_run_variant,
+                        target=_run_and_collect,
                         args=(model_name, model_data, output_path),
+                        daemon=True,
                     )
                     t.start()
                     threads.append(t)
 
                 for t in threads:
                     t.join()
+
+                for failed, error in variant_results:
+                    total_failed += failed
+                    if error and first_error is None:
+                        first_error = error
 
         except ImportError:
             # No Rich — fall back to sequential
@@ -147,6 +116,72 @@ class EvaluationExecutor:
                 total_failed += failed
 
         return total_failed, first_error
+
+    def _execute_single_variant(
+        self,
+        model_name: str,
+        model_data: Dict[str, Any],
+        output_path: Path,
+        records: List[Dict[str, Any]],
+        max_workers: int,
+        lock: Any,
+        on_advance: Any = None,
+    ) -> Tuple[int, Optional[str]]:
+        """Run a single model variant against all records.
+
+        Args:
+            model_name: Display name for the variant.
+            model_data: Dict with ``model``, ``args``, and ``config`` keys.
+            output_path: Path for JSONL result output.
+            records: Materialised dataset records.
+            max_workers: Thread pool size for record-level parallelism.
+            lock: Shared threading lock for error aggregation.
+            on_advance: Optional callback invoked after each record completes.
+
+        Returns:
+            ``(failed_count, first_error_message)`` for this variant.
+        """
+        model_instance = model_data["model"]
+        model_args = model_data["args"]
+        model_config_name = model_data["config"].name
+
+        run_id = f"run_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        variant_failed = 0
+        first_error = None
+
+        try:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(
+                        self.evaluate_record,
+                        record, run_id, model_config_name,
+                        model_name, model_instance, **model_args,
+                    )
+                    for record in records
+                ]
+
+                for future in as_completed(futures):
+                    try:
+                        eval_output = future.result()
+                        self._save_result(eval_output, output_path)
+                    except Exception as exc:
+                        variant_failed += 1
+                        logger.error("Record evaluation failed: %s", exc)
+                        with lock:
+                            if first_error is None:
+                                first_error = str(exc)
+                    if on_advance is not None:
+                        on_advance(model_name)
+
+            self._aggregate_and_save_evaluators(output_path, model_name)
+        except Exception as exc:
+            variant_failed = len(records)
+            logger.error("Variant '%s' failed: %s", model_name, exc)
+            with lock:
+                if first_error is None:
+                    first_error = str(exc)
+
+        return variant_failed, first_error
 
     def evaluate_model(
         self,
@@ -162,38 +197,23 @@ class EvaluationExecutor:
         model_config_name = model_data["config"].name
         target_mapping = getattr(model_data["config"], "mapping", {}) or {}
 
-        run_name = f"run_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        run_id = run_name
+        run_id = f"run_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        failed_count = 0
-
-        try:
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = []
-                for record in dataset:
-                    future = executor.submit(
-                        self.evaluate_record,
-                        record,
-                        run_id,
-                        model_config_name,
-                        model_name,
-                        model_instance,
-                        target_mapping=target_mapping,
-                        **model_args,
-                    )
-                    futures.append(future)
-
-                total = len(futures)
-                failed_count = self._collect_results_with_progress(
-                    futures, model_name, total, output_path,
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(
+                    self.evaluate_record,
+                    record, run_id, model_config_name, model_name,
+                    model_instance, target_mapping=target_mapping, **model_args,
                 )
+                for record in dataset
+            ]
 
-            # Aggregate evaluators
-            self._aggregate_and_save_evaluators(output_path, model_name)
+            failed_count = self._collect_results_with_progress(
+                futures, model_name, len(futures), output_path,
+            )
 
-        except Exception:
-            raise
-
+        self._aggregate_and_save_evaluators(output_path, model_name)
         return failed_count
 
     def evaluate_record(
@@ -206,164 +226,261 @@ class EvaluationExecutor:
         target_mapping: Optional[Dict[str, str]] = None,
         **kwargs: Any,
     ) -> EvaluationOutput:
-        """Evaluate a single record."""
+        """Evaluate a single record: infer, trace, score.
+
+        Orchestrates the full per-record pipeline: input mapping → inference
+        → output enrichment → evaluator computation → event emission.
+        """
         from .evaluator import _apply_target_input_mapping, _apply_target_output_mapping
-        from .evaluator import _extract_tool_definitions_from_trace, _infer_tool_definitions_from_trace
 
         record_id = str(hash(json.dumps(record, sort_keys=True, default=str)))[:12]
-
-        start_time = time.perf_counter()
-        agent_trace = None
-
-        # Apply target input mapping (dataset.X → target param)
         mapped_input = _apply_target_input_mapping(record, target_mapping or {})
 
-        try:
-            # Run inference — with OTel trace capture if enabled
-            if self._trace_capture is not None:
-                model_output, agent_trace = self._trace_capture.wrap_target_call(
-                    target_fn=model.infer,
-                    record=mapped_input,
-                    model_name=model_name,
-                    record_id=record_id,
-                )
-            else:
-                model_output = model.infer(mapped_input)
+        model_output, agent_trace, response_time_ms = self._run_inference(
+            model, mapped_input, model_name, record_id,
+        )
 
-            # Apply target output mapping (target.X → canonical name)
-            if isinstance(model_output, dict):
-                model_output = _apply_target_output_mapping(model_output, target_mapping or {})
+        if isinstance(model_output, dict):
+            from .evaluator import _apply_target_output_mapping
+            model_output = _apply_target_output_mapping(model_output, target_mapping or {})
 
-            response_time_ms = (time.perf_counter() - start_time) * 1000
+        if isinstance(model_output, dict):
+            self._enrich_output_from_trace(model_output, agent_trace)
+            self._resolve_tool_definitions(model_output, agent_trace)
+            self._ensure_output_items(model_output, record)
 
-            # Auto-enrich output from OTel traces.
-            # Targets just return {"response": text} — everything else comes from traces.
-            if isinstance(model_output, dict):
-                has_trace_data = (
-                    agent_trace is not None
-                    and (agent_trace.llm_calls or agent_trace.log_events)
-                )
-                if has_trace_data:
-                    if "output_items" not in model_output:
-                        model_output["output_items"] = agent_trace.to_conversation_format()
-                    if "tool_calls" not in model_output:
-                        model_output["tool_calls"] = agent_trace.to_tool_calls_format()
-                    if "tool_definitions" not in model_output:
-                        tool_defs = _extract_tool_definitions_from_trace(agent_trace)
-                        if tool_defs:
-                            model_output["tool_definitions"] = tool_defs
+        inference_output = self._build_inference_output(
+            model_output, model_name, record, kwargs, agent_trace,
+        )
+        evaluator_results = self._compute_evaluators(inference_output)
+        self._emit_trace_events(agent_trace, evaluator_results)
+        system_metrics = self._build_system_metrics(response_time_ms, agent_trace)
 
-                # Fallback: infer tool definitions from tool_calls if still missing
-                # (covers cases where OTel doesn't capture gen_ai.request.tools)
-                if "tool_definitions" not in model_output and model_output.get("tool_calls"):
-                    inferred = _infer_tool_definitions_from_trace(agent_trace) if agent_trace else []
-                    if not inferred:
-                        # Infer from model_output["tool_calls"] directly
-                        seen = {}
-                        for tc in model_output["tool_calls"]:
-                            name = tc.get("name", "")
-                            if name and name not in seen:
-                                args = tc.get("arguments", {})
-                                props = {k: {"type": "string"} for k in args} if isinstance(args, dict) else {}
-                                seen[name] = {
-                                    "type": "function", "name": name, "description": name,
-                                    "parameters": {"type": "object", "properties": props},
-                                }
-                        inferred = list(seen.values())
-                    if inferred:
-                        model_output["tool_definitions"] = inferred
-
-                # Fallback: minimal output_items from response/answer text
-                _response_text = model_output.get("response") or model_output.get("answer")
-                if "output_items" not in model_output and _response_text:
-                    model_output["output_items"] = [
-                        {"role": "assistant", "content": [{"type": "text", "text": str(_response_text)}]}
-                    ]
-
-                # Prepend user query for evaluator conversation parser
-                if "output_items" in model_output:
-                    items = model_output["output_items"]
-                    if items and items[0].get("role") != "user":
-                        query_text = record.get("query") or record.get("question") or record.get("prompt") or ""
-                        if query_text:
-                            items.insert(0, {"role": "user", "content": str(query_text)})
-
-                    # Ensure the final text answer is in output_items
-                    # (OTel may miss the last response due to timing)
-                    answer = model_output.get("response") or model_output.get("answer", "")
-                    if answer and items:
-                        last = items[-1]
-                        last_has_text = (
-                            last.get("role") == "assistant"
-                            and isinstance(last.get("content"), list)
-                            and any(isinstance(c, dict) and c.get("type") == "text" for c in last["content"])
-                        )
-                        if not last_has_text:
-                            items.append({"role": "assistant", "content": [{"type": "text", "text": str(answer)}]})
-
-            # Create inference output — attach trace data if captured
-            inference_output = InferenceOutput(
-                output=model_output, model_name=model_name, record=record, args=kwargs
-            )
-            if agent_trace is not None:
-                inference_output.agent_trace = agent_trace
-
-            # Compute evaluators
-            evaluators = {}
-            for evaluator_name, evaluator_instance in self.evaluators_registry.items():
-                try:
-                    evaluator_result = evaluator_instance.compute(inference_output)
-                    evaluators[evaluator_name] = evaluator_result
-                except Exception as eval_err:
-                    evaluators[evaluator_name] = {"error": f"computation_failed: {eval_err}"}
-
-            # Emit OTel evaluation result events for each evaluator score
-            if agent_trace is not None and self._trace_capture is not None:
-                for eval_name, eval_result in evaluators.items():
-                    if isinstance(eval_result, dict) and "error" not in eval_result:
-                        score_val = None
-                        score_label = None
-                        explanation = None
-                        for k, v in eval_result.items():
-                            if isinstance(v, (int, float)):
-                                score_val = float(v)
-                            elif isinstance(v, str) and k in ("label", "result"):
-                                score_label = v
-                            elif isinstance(v, str) and k in ("reason", "explanation"):
-                                explanation = v
-                        self._trace_capture.emit_evaluation_result(
-                            trace_id=agent_trace.trace_id,
-                            span_id=agent_trace.parent_span_id,
-                            evaluator_name=eval_name,
-                            score_value=score_val,
-                            score_label=score_label,
-                            explanation=explanation,
-                        )
-
-            system_metrics = {"response_time": {"response_time_ms": response_time_ms}}
-            # Include trace metrics in system metrics if available
-            if agent_trace is not None:
-                system_metrics["trace"] = {
-                    "llm_call_count": len(agent_trace.llm_calls),
-                    "total_input_tokens": agent_trace.total_input_tokens,
-                    "total_output_tokens": agent_trace.total_output_tokens,
-                    "total_llm_duration_ms": agent_trace.total_duration_ms,
-                    "tool_call_count": len(agent_trace.tool_calls),
-                }
-
-            return EvaluationOutput(
-                run_id=run_id,
-                inference_output=inference_output,
-                evaluators=evaluators,
-                system_evaluators=system_metrics,
-                model_display_name=model_display_name,
-                metadata={},
-            )
-        except Exception as e:
-            raise
+        return EvaluationOutput(
+            run_id=run_id,
+            inference_output=inference_output,
+            evaluators=evaluator_results,
+            system_evaluators=system_metrics,
+            model_display_name=model_display_name,
+            metadata={},
+        )
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # evaluate_record helpers
+    # ------------------------------------------------------------------
+
+    def _run_inference(
+        self,
+        model: Any,
+        mapped_input: Dict[str, Any],
+        model_name: str,
+        record_id: str,
+    ) -> Tuple[Any, Any, float]:
+        """Call model.infer with timing and optional OTel trace capture.
+
+        Returns:
+            ``(model_output, agent_trace_or_None, response_time_ms)``
+        """
+        start = time.perf_counter()
+        agent_trace = None
+
+        if self._trace_capture is not None:
+            model_output, agent_trace = self._trace_capture.wrap_target_call(
+                target_fn=model.infer,
+                record=mapped_input,
+                model_name=model_name,
+                record_id=record_id,
+            )
+        else:
+            model_output = model.infer(mapped_input)
+
+        response_time_ms = (time.perf_counter() - start) * 1000
+        return model_output, agent_trace, response_time_ms
+
+    @staticmethod
+    def _enrich_output_from_trace(
+        model_output: Dict[str, Any],
+        agent_trace: Any,
+    ) -> None:
+        """Populate output_items, tool_calls, and tool_definitions from OTel trace data.
+
+        Targets typically return ``{"response": text}``; everything else is
+        extracted from the captured agent trace when available.
+        """
+        has_trace_data = (
+            agent_trace is not None
+            and (agent_trace.llm_calls or agent_trace.log_events)
+        )
+        if not has_trace_data:
+            return
+
+        from .evaluator import _extract_tool_definitions_from_trace
+
+        if "output_items" not in model_output:
+            model_output["output_items"] = agent_trace.to_conversation_format()
+        if "tool_calls" not in model_output:
+            model_output["tool_calls"] = agent_trace.to_tool_calls_format()
+        if "tool_definitions" not in model_output:
+            tool_defs = _extract_tool_definitions_from_trace(agent_trace)
+            if tool_defs:
+                model_output["tool_definitions"] = tool_defs
+
+    @staticmethod
+    def _resolve_tool_definitions(
+        model_output: Dict[str, Any],
+        agent_trace: Any,
+    ) -> None:
+        """Ensure tool_definitions is populated, inferring from tool_calls when needed.
+
+        Covers cases where OTel doesn't capture ``gen_ai.request.tools``.
+        """
+        if "tool_definitions" in model_output or not model_output.get("tool_calls"):
+            return
+
+        from .evaluator import _infer_tool_definitions_from_trace
+
+        inferred = _infer_tool_definitions_from_trace(agent_trace) if agent_trace else []
+        if not inferred:
+            tool_definitions_by_name: Dict[str, Dict[str, Any]] = {}
+            for tool_call in model_output["tool_calls"]:
+                name = tool_call.get("name", "")
+                if name and name not in tool_definitions_by_name:
+                    args = tool_call.get("arguments", {})
+                    props = {k: {"type": "string"} for k in args} if isinstance(args, dict) else {}
+                    tool_definitions_by_name[name] = {
+                        "type": "function", "name": name, "description": name,
+                        "parameters": {"type": "object", "properties": props},
+                    }
+            inferred = list(tool_definitions_by_name.values())
+
+        if inferred:
+            model_output["tool_definitions"] = inferred
+
+    @staticmethod
+    def _ensure_output_items(
+        model_output: Dict[str, Any],
+        record: Dict[str, Any],
+    ) -> None:
+        """Add fallback output_items and prepend user query for evaluator conversation parsing."""
+        response_text = model_output.get("response") or model_output.get("answer")
+
+        # Fallback: minimal output_items from response/answer text
+        if "output_items" not in model_output and response_text:
+            model_output["output_items"] = [
+                {"role": "assistant", "content": [{"type": "text", "text": str(response_text)}]}
+            ]
+
+        if "output_items" not in model_output:
+            return
+
+        items = model_output["output_items"]
+
+        # Prepend user query for evaluator conversation parser
+        if items and items[0].get("role") != "user":
+            query_text = record.get("query") or record.get("question") or record.get("prompt") or ""
+            if query_text:
+                items.insert(0, {"role": "user", "content": str(query_text)})
+
+        # Ensure the final text answer is in output_items
+        # (OTel may miss the last response due to timing)
+        answer = model_output.get("response") or model_output.get("answer", "")
+        if answer and items:
+            last = items[-1]
+            last_has_text = (
+                last.get("role") == "assistant"
+                and isinstance(last.get("content"), list)
+                and any(isinstance(c, dict) and c.get("type") == "text" for c in last["content"])
+            )
+            if not last_has_text:
+                items.append({"role": "assistant", "content": [{"type": "text", "text": str(answer)}]})
+
+    @staticmethod
+    def _build_inference_output(
+        model_output: Any,
+        model_name: str,
+        record: Dict[str, Any],
+        args: Dict[str, Any],
+        agent_trace: Any,
+    ) -> InferenceOutput:
+        """Construct an ``InferenceOutput``, attaching trace data when available."""
+        inference_output = InferenceOutput(
+            output=model_output, model_name=model_name, record=record, args=args,
+        )
+        if agent_trace is not None:
+            inference_output.agent_trace = agent_trace
+        return inference_output
+
+    def _compute_evaluators(
+        self,
+        inference_output: InferenceOutput,
+    ) -> Dict[str, Any]:
+        """Run every registered evaluator on the inference output.
+
+        Returns:
+            Dict mapping evaluator name → result dict (or error dict).
+        """
+        evaluator_results: Dict[str, Any] = {}
+        for evaluator_name, evaluator_instance in self.evaluators_registry.items():
+            try:
+                evaluator_results[evaluator_name] = evaluator_instance.compute(inference_output)
+            except Exception as eval_err:
+                evaluator_results[evaluator_name] = {"error": f"computation_failed: {eval_err}"}
+        return evaluator_results
+
+    def _emit_trace_events(
+        self,
+        agent_trace: Any,
+        evaluator_results: Dict[str, Any],
+    ) -> None:
+        """Emit OTel evaluation-result events for each scored evaluator."""
+        if agent_trace is None or self._trace_capture is None:
+            return
+
+        for eval_name, eval_result in evaluator_results.items():
+            if not isinstance(eval_result, dict) or "error" in eval_result:
+                continue
+
+            score_val: Optional[float] = None
+            score_label: Optional[str] = None
+            explanation: Optional[str] = None
+            for key, value in eval_result.items():
+                if isinstance(value, (int, float)):
+                    score_val = float(value)
+                elif isinstance(value, str) and key in ("label", "result"):
+                    score_label = value
+                elif isinstance(value, str) and key in ("reason", "explanation"):
+                    explanation = value
+
+            self._trace_capture.emit_evaluation_result(
+                trace_id=agent_trace.trace_id,
+                span_id=agent_trace.parent_span_id,
+                evaluator_name=eval_name,
+                score_value=score_val,
+                score_label=score_label,
+                explanation=explanation,
+            )
+
+    @staticmethod
+    def _build_system_metrics(
+        response_time_ms: float,
+        agent_trace: Any,
+    ) -> Dict[str, Any]:
+        """Build the system_evaluators dict (response time + trace metrics)."""
+        metrics: Dict[str, Any] = {
+            "response_time": {"response_time_ms": response_time_ms},
+        }
+        if agent_trace is not None:
+            metrics["trace"] = {
+                "llm_call_count": len(agent_trace.llm_calls),
+                "total_input_tokens": agent_trace.total_input_tokens,
+                "total_output_tokens": agent_trace.total_output_tokens,
+                "total_llm_duration_ms": agent_trace.total_duration_ms,
+                "tool_call_count": len(agent_trace.tool_calls),
+            }
+        return metrics
+
+    # ------------------------------------------------------------------
+    # General internal helpers
     # ------------------------------------------------------------------
 
     def _collect_results_with_progress(

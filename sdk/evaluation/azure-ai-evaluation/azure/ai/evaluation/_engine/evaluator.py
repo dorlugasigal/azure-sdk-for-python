@@ -18,201 +18,21 @@ from .models import ExecutionContext
 from .otel_trace_capture import OTelTraceCapture
 from .output_formatter import OutputFormatter
 from .target_factory import TargetFactory
+from .target_mapping import _apply_target_input_mapping, _apply_target_output_mapping
+from .trace_utils import _extract_tool_definitions_from_trace, _infer_tool_definitions_from_trace
+
+# Re-export so that existing ``from .evaluator import …`` statements keep working.
+__all__ = [
+    "ModelEvaluator",
+    "_apply_target_input_mapping",
+    "_apply_target_output_mapping",
+    "_extract_tool_definitions_from_trace",
+    "_infer_tool_definitions_from_trace",
+]
 
 logger = logging.getLogger(__name__)
 
 OUTPUT_PATH_OVERRIDE_ENV = "EV_OUTPUT_PATH_OVERRIDE"
-
-
-def _extract_tool_definitions_from_trace(agent_trace) -> list:
-    """Extract tool definitions from OTel trace spans.
-
-    Checks multiple sources in priority order:
-    1. gen_ai.tool.definitions (MAF / standard semconv)
-    2. gen_ai.request.tools (azure-ai-projects ResponsesInstrumentor)
-    3. Inferred from tool calls in the conversation (fallback, same as RAISvc cloud)
-    """
-    import json as _json
-
-    # Try explicit tool definitions from span attributes
-    for attr_name in ("gen_ai.tool.definitions", "gen_ai.request.tools"):
-        for span in agent_trace.spans:
-            tool_defs = span.attributes.get(attr_name)
-            if not tool_defs:
-                continue
-
-            if isinstance(tool_defs, str):
-                try:
-                    parsed = _json.loads(tool_defs)
-                except (_json.JSONDecodeError, ValueError):
-                    continue
-            elif isinstance(tool_defs, (list, tuple)):
-                parsed = list(tool_defs)
-            else:
-                continue
-
-            # Flatten nested OpenAI format if needed
-            result = []
-            for td in parsed:
-                if isinstance(td, dict) and "function" in td and isinstance(td["function"], dict):
-                    flat = {"type": td.get("type", "function")}
-                    flat.update(td["function"])
-                    result.append(flat)
-                elif isinstance(td, dict):
-                    result.append(td)
-            if result:
-                return result
-
-    # Fallback: infer tool definitions from tool calls in the trace
-    # (same approach as RAISvc cloud evaluation)
-    return _infer_tool_definitions_from_trace(agent_trace)
-
-
-def _infer_tool_definitions_from_trace(agent_trace) -> list:
-    """Infer tool definitions from tool calls found in the trace.
-
-    When gen_ai.tool.definitions is not available, we can derive basic tool
-    definitions from the tool calls themselves (names + argument types).
-    This matches what the RAISvc cloud evaluation does as a fallback.
-    """
-    import json as _json
-
-    inferred: dict = {}
-
-    # From execute_tool spans
-    for span in agent_trace.spans:
-        if span.operation_name == "execute_tool":
-            name = span.attributes.get("gen_ai.tool.name", "")
-            if name and name not in inferred:
-                args_raw = span.attributes.get("gen_ai.tool.call.arguments", {})
-                if isinstance(args_raw, str):
-                    try:
-                        args_raw = _json.loads(args_raw)
-                    except (_json.JSONDecodeError, ValueError):
-                        args_raw = {}
-
-                # Build parameter schema from argument values
-                props = {}
-                if isinstance(args_raw, dict):
-                    for k, v in args_raw.items():
-                        if isinstance(v, str):
-                            props[k] = {"type": "string"}
-                        elif isinstance(v, bool):
-                            props[k] = {"type": "boolean"}
-                        elif isinstance(v, int):
-                            props[k] = {"type": "integer"}
-                        elif isinstance(v, float):
-                            props[k] = {"type": "number"}
-                        else:
-                            props[k] = {"type": "string"}
-
-                inferred[name] = {
-                    "name": name,
-                    "type": "function",
-                    "description": span.attributes.get("gen_ai.tool.description", name),
-                    "parameters": {"type": "object", "properties": props},
-                }
-
-    # From tool_calls in the trace
-    for tc in agent_trace.tool_calls:
-        name = tc.get("name", "")
-        if name and name not in inferred:
-            args = tc.get("arguments", {})
-            if isinstance(args, str):
-                try:
-                    args = _json.loads(args)
-                except (_json.JSONDecodeError, ValueError):
-                    args = {}
-
-            props = {}
-            if isinstance(args, dict):
-                for k, v in args.items():
-                    if isinstance(v, str):
-                        props[k] = {"type": "string"}
-                    elif isinstance(v, bool):
-                        props[k] = {"type": "boolean"}
-                    elif isinstance(v, int):
-                        props[k] = {"type": "integer"}
-                    elif isinstance(v, float):
-                        props[k] = {"type": "number"}
-                    else:
-                        props[k] = {"type": "string"}
-
-            inferred[name] = {
-                "name": name,
-                "type": "function",
-                "description": name,
-                "parameters": {"type": "object", "properties": props},
-            }
-
-    return list(inferred.values())
-
-
-def _apply_target_input_mapping(
-    record: Dict[str, Any], mapping: Dict[str, str]
-) -> Dict[str, Any]:
-    """Apply target input mapping: build mapped input from dataset fields.
-
-    For each mapping entry with a ``dataset.X`` source, the dataset field ``X``
-    is copied into the result under the mapping key.  Fields not covered by the
-    mapping are passed through unchanged so that existing targets continue to
-    work when only a partial mapping is specified.
-    """
-    if not mapping:
-        return record
-
-    input_mapping = {
-        param: source_field.split(".", 1)[1]
-        for param, source_field in mapping.items()
-        if source_field.startswith("dataset.")
-    }
-    if not input_mapping:
-        return record
-
-    mapped: Dict[str, Any] = {}
-    for param, dataset_field in input_mapping.items():
-        if dataset_field not in record:
-            raise KeyError(
-                f"Target input mapping: field '{dataset_field}' not found in dataset record. "
-                f"Available fields: {list(record.keys())}"
-            )
-        mapped[param] = record[dataset_field]
-
-    # Pass through unmapped fields so targets that read extra columns still work
-    for key, value in record.items():
-        if key not in mapped:
-            mapped[key] = value
-
-    return mapped
-
-
-def _apply_target_output_mapping(
-    model_output: Dict[str, Any], mapping: Dict[str, str]
-) -> Dict[str, Any]:
-    """Apply target output mapping: rename target output keys to canonical names.
-
-    For each mapping entry with a ``target.X`` source, the target output field
-    ``X`` is renamed to the mapping key (the canonical name the engine expects,
-    e.g. ``response``).
-    """
-    if not mapping or not isinstance(model_output, dict):
-        return model_output
-
-    output_mapping = {
-        canonical: source_field.split(".", 1)[1]
-        for canonical, source_field in mapping.items()
-        if source_field.startswith("target.")
-    }
-    if not output_mapping:
-        return model_output
-
-    result = dict(model_output)
-    for canonical, target_field in output_mapping.items():
-        if target_field in result:
-            value = result.pop(target_field)
-            result[canonical] = value
-
-    return result
 
 
 class ModelEvaluator:
@@ -226,38 +46,60 @@ class ModelEvaluator:
     ) -> None:
         """Initialize evaluator.
 
-        Args:
-            config_path: Path to configuration YAML file
-            load_config_only: Whether to only load configuration
-            model_filter: Optional list of model names to evaluate
+        :param config_path: Path to the configuration YAML file.
+        :type config_path: str
+        :param load_config_only: When ``True``, only load the configuration without
+            setting up experiment infrastructure.
+        :type load_config_only: bool
+        :param model_filter: Optional list of model names to limit evaluation to.
+        :type model_filter: list[str] or None
         """
         self.model_filter = model_filter
         self._config_path = str(Path(config_path).resolve())
 
-        # Auto-discover components
         discover_components()
-
-        # Load config
         self.config = Config.from_yaml(config_path)
-
-        # Set up OTel trace capture — auto-enabled when OTel SDK is available
-        self._trace_capture: Optional[OTelTraceCapture] = None
-        trace_capture = OTelTraceCapture(capture_content=True)
-        if trace_capture.setup():
-            self._trace_capture = trace_capture
+        self._trace_capture = self._setup_tracing()
 
         if load_config_only:
             return
 
-        # Create output directory
         self._current_dir = Path.cwd()
         self._current_experiment_dir = self._create_experiment_dir()
+        self._setup_logging()
+        self._output = self._setup_output_formatter()
+        self.connections_registry = self._build_connections_registry()
+        self.execution_context = self._build_execution_context()
+        self.targets_registry = self._register_targets(model_filter)
+        self.evaluators_registry: Dict[str, Any] = {}
+        self._register_evaluators()
 
-        # Set up structured logging with file handler in experiment directory
+    # ------------------------------------------------------------------
+    # __init__ helpers
+    # ------------------------------------------------------------------
+
+    def _setup_tracing(self) -> Optional[OTelTraceCapture]:
+        """Set up OTel trace capture if the SDK is available.
+
+        :returns: An initialised :class:`OTelTraceCapture` or ``None``.
+        :rtype: OTelTraceCapture or None
+        """
+        trace_capture = OTelTraceCapture(capture_content=True)
+        if trace_capture.setup():
+            return trace_capture
+        return None
+
+    def _setup_logging(self) -> None:
+        """Configure structured logging with a file handler in the experiment directory."""
         _setup_logger(__name__, logs_path=str(self._current_experiment_dir))
 
-        # Output formatter for AITK persistence and result building
-        self._output = OutputFormatter(
+    def _setup_output_formatter(self) -> OutputFormatter:
+        """Build the :class:`OutputFormatter` for AITK persistence and result building.
+
+        :returns: A configured :class:`OutputFormatter` instance.
+        :rtype: OutputFormatter
+        """
+        return OutputFormatter(
             current_dir=self._current_dir,
             experiment_dir=self._current_experiment_dir,
             config_path=self._config_path,
@@ -266,18 +108,29 @@ class ModelEvaluator:
             evaluator_configs=self.config.experiment.evaluators,
         )
 
-        # Register connections
-        self.connections_registry: Dict[str, Any] = {}
+    def _build_connections_registry(self) -> Dict[str, Any]:
+        """Build a registry of configured connections.
+
+        :returns: A dictionary mapping connection names to their configuration objects.
+        :rtype: dict[str, Any]
+        """
+        registry: Dict[str, Any] = {}
         connections = self.config.experiment.connections
         if isinstance(connections, list):
             for connection in connections:
                 if hasattr(connection, "name"):
-                    self.connections_registry[connection.name] = connection
+                    registry[connection.name] = connection
                 elif isinstance(connection, dict):
-                    self.connections_registry[connection.get("name", "default")] = connection
+                    registry[connection.get("name", "default")] = connection
+        return registry
 
-        # Build execution context
-        self.execution_context = ExecutionContext(
+    def _build_execution_context(self) -> ExecutionContext:
+        """Create the :class:`ExecutionContext` for this experiment run.
+
+        :returns: A populated :class:`ExecutionContext`.
+        :rtype: ExecutionContext
+        """
+        return ExecutionContext(
             connections_registry=self.connections_registry,
             experiment_name=self.config.experiment.name,
             experiment_version=self.config.experiment.version,
@@ -285,20 +138,31 @@ class ModelEvaluator:
             output_path=self.config.experiment.output_path,
         )
 
-        # Register targets and evaluators
-        self.targets_registry = {}
-        self.evaluators_registry = {}
+    def _register_targets(self, model_filter: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Create a :class:`TargetFactory` and register targets.
 
+        :param model_filter: Optional list of model names to limit registration to.
+        :type model_filter: list[str] or None
+        :returns: A dictionary mapping target names to their data.
+        :rtype: dict[str, Any]
+        """
         self._target_factory = TargetFactory(
             config=self.config,
             execution_context=self.execution_context,
             connections_registry=self.connections_registry,
         )
-        self.targets_registry = self._target_factory.register_targets(model_filter)
-        self._register_evaluators()
+        return self._target_factory.register_targets(model_filter)
+
+    # ------------------------------------------------------------------
+    # Existing helpers
+    # ------------------------------------------------------------------
 
     def _create_experiment_dir(self) -> Path:
-        """Create experiment directory."""
+        """Create the experiment output directory.
+
+        :returns: The path to the created experiment directory.
+        :rtype: Path
+        """
         name = self.config.experiment.name.replace(" ", "_")
         version = self.config.experiment.version
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -356,6 +220,14 @@ class ModelEvaluator:
         """Load dataset from configuration.
 
         Uses :class:`DatasetFactory` for type routing and path overrides.
+
+        :param dataset_config: Explicit dataset configuration. Falls back to the
+            experiment config when ``None``.
+        :type dataset_config: DatasetConfig or None
+        :param dataset_path: Optional override path for the dataset file.
+        :type dataset_path: str or None
+        :returns: The loaded dataset.
+        :rtype: BaseDataset
         """
         if dataset_config is None:
             dataset_config = self.config.experiment.dataset
@@ -369,32 +241,68 @@ class ModelEvaluator:
             context=self.execution_context,
         )
 
+    # ------------------------------------------------------------------
+    # evaluate() and its helpers
+    # ------------------------------------------------------------------
+
     def evaluate(self, dataset: BaseDataset) -> Dict[str, Any]:
-        """Evaluate all models on dataset.
+        """Evaluate all models on the given dataset.
 
-        Args:
-            dataset: Dataset to evaluate
-
-        Returns:
-            Summary dictionary with results
+        :param dataset: The dataset to evaluate against.
+        :type dataset: BaseDataset
+        :returns: A summary dictionary with status, paths, and aggregated metrics.
+        :rtype: dict[str, Any]
         """
-        # Suppress noisy non-fatal warnings from SDK evaluators and LangChain callbacks
-        for _logger_name in ("langchain_core.callbacks.manager", "langchain_core.callbacks", "langchain_azure_ai"):
+        self._suppress_noisy_loggers()
+
+        executor = self._create_executor()
+        failed_records, first_error_msg = self._run_evaluation(executor, dataset)
+
+        summary = self._build_summary(dataset, failed_records, first_error_msg)
+        self._persist_outputs(summary)
+        self._cleanup()
+
+        return summary
+
+    def _suppress_noisy_loggers(self) -> None:
+        """Suppress non-fatal warnings from SDK evaluators and LangChain callbacks."""
+        for _logger_name in (
+            "langchain_core.callbacks.manager",
+            "langchain_core.callbacks",
+            "langchain_azure_ai",
+        ):
             logging.getLogger(_logger_name).setLevel(logging.ERROR)
 
-        total_models = len(self.targets_registry)
-        total_records = len(dataset) * total_models
-        failed_records = 0
-        first_error_msg = None
+    def _create_executor(self) -> EvaluationExecutor:
+        """Instantiate and cache an :class:`EvaluationExecutor`.
 
-        max_workers = self.config.experiment.max_workers or 4
-
+        :returns: The evaluation executor for this run.
+        :rtype: EvaluationExecutor
+        """
         executor = EvaluationExecutor(
             evaluators_registry=self.evaluators_registry,
             trace_capture=self._trace_capture,
             experiment_dir=self._current_experiment_dir,
         )
         self._executor = executor
+        return executor
+
+    def _run_evaluation(
+        self, executor: EvaluationExecutor, dataset: BaseDataset
+    ) -> tuple:
+        """Execute evaluation across all registered targets.
+
+        :param executor: The evaluation executor.
+        :type executor: EvaluationExecutor
+        :param dataset: The dataset to evaluate.
+        :type dataset: BaseDataset
+        :returns: A tuple of ``(failed_records, first_error_msg)``.
+        :rtype: tuple[int, str | None]
+        """
+        max_workers = self.config.experiment.max_workers or 4
+        total_models = len(self.targets_registry)
+        failed_records = 0
+        first_error_msg: Optional[str] = None
 
         if total_models > 1:
             failed_records, first_error_msg = executor.evaluate_all_parallel(
@@ -403,10 +311,33 @@ class ModelEvaluator:
         else:
             for model_name, model_data in self.targets_registry.items():
                 output_path = self._current_experiment_dir / f"{model_name}_results.jsonl"
-                failed = executor.evaluate_model(dataset, model_name, model_data, output_path, max_workers)
+                failed = executor.evaluate_model(
+                    dataset, model_name, model_data, output_path, max_workers,
+                )
                 failed_records += failed
 
-        # Collect aggregated metrics from all model summaries
+        return failed_records, first_error_msg
+
+    def _build_summary(
+        self,
+        dataset: BaseDataset,
+        failed_records: int,
+        first_error_msg: Optional[str],
+    ) -> Dict[str, Any]:
+        """Collect aggregated metrics and build the final summary dictionary.
+
+        :param dataset: The evaluated dataset (used for record count).
+        :type dataset: BaseDataset
+        :param failed_records: Number of records that failed evaluation.
+        :type failed_records: int
+        :param first_error_msg: The first error message encountered, if any.
+        :type first_error_msg: str or None
+        :returns: The evaluation summary dictionary.
+        :rtype: dict[str, Any]
+        """
+        total_models = len(self.targets_registry)
+        total_records = len(dataset) * total_models
+
         all_aggregated: Dict[str, Any] = {}
         for model_name in self.targets_registry:
             summary_path = self._current_experiment_dir / f"{model_name}_summary.json"
@@ -421,7 +352,7 @@ class ModelEvaluator:
                 except Exception:
                     pass
 
-        summary = {
+        summary: Dict[str, Any] = {
             "status": "completed_with_errors" if failed_records > 0 else "completed",
             "output_path": str(self._current_experiment_dir),
             "total_records": total_records,
@@ -432,6 +363,14 @@ class ModelEvaluator:
         if first_error_msg:
             summary["first_error"] = first_error_msg
 
+        return summary
+
+    def _persist_outputs(self, summary: Dict[str, Any]) -> None:
+        """Write AITK job artifacts and sidebar results to disk.
+
+        :param summary: The summary dictionary to augment with artifact paths.
+        :type summary: dict[str, Any]
+        """
         aitk_job_path = self._output.persist_aitk_job_artifacts()
         if aitk_job_path is not None:
             summary["aitk_job_path"] = str(aitk_job_path)
@@ -440,8 +379,7 @@ class ModelEvaluator:
         if sidebar_path is not None:
             summary["aitk_sidebar_path"] = str(sidebar_path)
 
-        # Clean up OTel trace capture
+    def _cleanup(self) -> None:
+        """Shut down resources acquired during the evaluation run."""
         if self._trace_capture is not None:
             self._trace_capture.shutdown()
-
-        return summary
