@@ -12,7 +12,7 @@ experiment:
     - name: "f1_score"
       mapping:
         response: "dataset.answer"
-        ground_truth: "dataset.context"
+        ground_truth: "dataset.ground_truth"
     - name: "answer_length"
       mapping:
         response: "dataset.answer"
