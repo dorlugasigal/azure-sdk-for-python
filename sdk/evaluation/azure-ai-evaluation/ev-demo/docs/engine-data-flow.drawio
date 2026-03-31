@@ -1,0 +1,227 @@
+<mxfile host="65bd71144e">
+    <diagram name="Engine Data Flow" id="engine-flow-mapping">
+        <mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1100" background="#ffffff" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+
+                <!-- Title -->
+                <mxCell id="title" value="Engine Data Flow with Mapping" style="text;fontSize=24;fontStyle=1;align=center;fillColor=none;strokeColor=none;fontColor=#333333;" vertex="1" parent="1">
+                    <mxGeometry x="500" y="20" width="500" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="subtitle" value="How dataset records flow through targets and evaluators via configurable mapping" style="text;fontSize=12;align=center;fillColor=none;strokeColor=none;fontColor=#888888;fontStyle=2;" vertex="1" parent="1">
+                    <mxGeometry x="450" y="55" width="600" height="20" as="geometry"/>
+                </mxCell>
+
+                <!-- ROW 1: Dataset → Input Mapping → Target -->
+
+                <!-- PHASE 1: Dataset -->
+                <mxCell id="phase1" value="&#xa;Dataset" style="swimlane;startSize=25;fillColor=#f5f5f5;strokeColor=#cccccc;rounded=1;fontSize=14;fontStyle=1;fontColor=#888888;swimlaneLine=1;" vertex="1" parent="1">
+                    <mxGeometry x="40" y="100" width="200" height="230" as="geometry"/>
+                </mxCell>
+                <mxCell id="dataset_icon" value="data.jsonl" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontStyle=1;" vertex="1" parent="phase1">
+                    <mxGeometry x="40" y="40" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="dataset_fields" value="Fields:&#xa;  question&#xa;  context&#xa;  expected_answer&#xa;  ..." style="rounded=1;whiteSpace=wrap;fillColor=#fffde7;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="phase1">
+                    <mxGeometry x="20" y="120" width="160" height="90" as="geometry"/>
+                </mxCell>
+
+                <!-- PHASE 2: Target Input Mapping -->
+                <mxCell id="phase2" value="&#xa;Target Input Mapping" style="swimlane;startSize=25;fillColor=#e8f5e9;strokeColor=#81c784;rounded=1;fontSize=14;fontStyle=1;fontColor=#2e7d32;swimlaneLine=1;" vertex="1" parent="1">
+                    <mxGeometry x="370" y="100" width="240" height="230" as="geometry"/>
+                </mxCell>
+                <mxCell id="input_map_box" value="mapping: (dataset.X)&#xa;&#xa;query: &quot;dataset.question&quot;&#xa;&#xa;Renames dataset fields&#xa;before passing to&#xa;target.infer()" style="rounded=1;whiteSpace=wrap;fillColor=#c8e6c9;strokeColor=#81c784;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="phase2">
+                    <mxGeometry x="15" y="35" width="210" height="115" as="geometry"/>
+                </mxCell>
+                <mxCell id="input_result" value="Result:&#xa;  {&quot;query&quot;: &quot;...&quot;,&#xa;   &quot;context&quot;: &quot;...&quot;}" style="rounded=1;whiteSpace=wrap;fillColor=#e8f5e9;strokeColor=#81c784;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="phase2">
+                    <mxGeometry x="15" y="165" width="210" height="55" as="geometry"/>
+                </mxCell>
+
+                <!-- PHASE 3: Target -->
+                <mxCell id="phase3" value="&#xa;Target" style="swimlane;startSize=25;fillColor=#e3f2fd;strokeColor=#64b5f6;rounded=1;fontSize=14;fontStyle=1;fontColor=#1565c0;swimlaneLine=1;" vertex="1" parent="1">
+                    <mxGeometry x="740" y="100" width="240" height="230" as="geometry"/>
+                </mxCell>
+                <mxCell id="target_box" value="target.infer(input)" style="rounded=1;whiteSpace=wrap;fillColor=#bbdefb;strokeColor=#64b5f6;fontSize=14;fontStyle=1;" vertex="1" parent="phase3">
+                    <mxGeometry x="20" y="40" width="200" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="target_types" value="All target types:&#xa;  • custom&#xa;  • azure_ai_model&#xa;  • azure_ai_agent" style="rounded=1;whiteSpace=wrap;fillColor=#e3f2fd;strokeColor=#90caf9;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="phase3">
+                    <mxGeometry x="20" y="100" width="200" height="75" as="geometry"/>
+                </mxCell>
+                <mxCell id="target_output" value="Returns: {&quot;response&quot;: &quot;...&quot;}" style="rounded=1;whiteSpace=wrap;fillColor=#bbdefb;strokeColor=#64b5f6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="phase3">
+                    <mxGeometry x="20" y="185" width="200" height="35" as="geometry"/>
+                </mxCell>
+
+                <!-- ROW 2: OTel → Evaluator Mapping → Evaluators → Results -->
+
+                <!-- PHASE 4: OTel Enrichment -->
+                <mxCell id="phase5" value="&#xa;OTel Enrichment" style="swimlane;startSize=25;fillColor=#fce4ec;strokeColor=#ef9a9a;rounded=1;fontSize=14;fontStyle=1;fontColor=#c62828;swimlaneLine=1;" vertex="1" parent="1">
+                    <mxGeometry x="1110" y="100" width="240" height="230" as="geometry"/>
+                </mxCell>
+                <mxCell id="otel_box" value="Auto-enriches output:&#xa;  • output_items&#xa;  • tool_calls&#xa;  • tool_definitions&#xa;&#xa;From OTel trace spans" style="rounded=1;whiteSpace=wrap;fillColor=#ffcdd2;strokeColor=#ef9a9a;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="phase5">
+                    <mxGeometry x="15" y="40" width="210" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="otel_note" value="Targets just return text;&#xa;engine captures the rest" style="rounded=1;whiteSpace=wrap;fillColor=#fce4ec;strokeColor=#ef9a9a;fontSize=10;align=center;fontStyle=2;" vertex="1" parent="phase5">
+                    <mxGeometry x="15" y="165" width="210" height="45" as="geometry"/>
+                </mxCell>
+
+                <!-- PHASE 5: Evaluator Mapping -->
+                <mxCell id="phase6" value="&#xa;Evaluator Mapping" style="swimlane;startSize=25;fillColor=#f3e5f5;strokeColor=#ce93d8;rounded=1;fontSize=14;fontStyle=1;fontColor=#7b1fa2;swimlaneLine=1;" vertex="1" parent="1">
+                    <mxGeometry x="40" y="440" width="280" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="eval_map_box" value="mapping:&#xa;  query: &quot;dataset.question&quot;&#xa;  response: &quot;model.response&quot;&#xa;&#xa;Maps data sources&#xa;to evaluator parameters" style="rounded=1;whiteSpace=wrap;fillColor=#e1bee7;strokeColor=#ce93d8;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="phase6">
+                    <mxGeometry x="15" y="40" width="250" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="eval_sources" value="Sources: dataset.X | model.X" style="rounded=1;whiteSpace=wrap;fillColor=#f3e5f5;strokeColor=#ce93d8;fontSize=10;align=center;" vertex="1" parent="phase6">
+                    <mxGeometry x="15" y="165" width="250" height="35" as="geometry"/>
+                </mxCell>
+
+                <!-- PHASE 6: Evaluators -->
+                <mxCell id="phase7" value="&#xa;Evaluators" style="swimlane;startSize=25;fillColor=#ede7f6;strokeColor=#b39ddb;rounded=1;fontSize=14;fontStyle=1;fontColor=#4527a0;swimlaneLine=1;" vertex="1" parent="1">
+                    <mxGeometry x="430" y="440" width="280" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="eval_compute" value="evaluator.compute(**fields)" style="rounded=1;whiteSpace=wrap;fillColor=#d1c4e9;strokeColor=#b39ddb;fontSize=13;fontStyle=1;" vertex="1" parent="phase7">
+                    <mxGeometry x="20" y="40" width="240" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="eval_types" value="  • coherence&#xa;  • relevance&#xa;  • f1_score&#xa;  • task_adherence&#xa;  • custom @evaluator" style="rounded=1;whiteSpace=wrap;fillColor=#ede7f6;strokeColor=#b39ddb;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="phase7">
+                    <mxGeometry x="20" y="95" width="240" height="110" as="geometry"/>
+                </mxCell>
+
+                <!-- PHASE 7: Results -->
+                <mxCell id="phase8" value="&#xa;Results" style="swimlane;startSize=25;fillColor=#fff3e0;strokeColor=#ffb74d;rounded=1;fontSize=14;fontStyle=1;fontColor=#e65100;swimlaneLine=1;" vertex="1" parent="1">
+                    <mxGeometry x="820" y="440" width="240" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="results_box" value="EvaluationOutput&#xa;&#xa;  • inputs.*&#xa;  • outputs.response&#xa;  • eval.score&#xa;  • metrics (aggregated)" style="rounded=1;whiteSpace=wrap;fillColor=#ffe0b2;strokeColor=#ffb74d;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="phase8">
+                    <mxGeometry x="15" y="40" width="210" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="results_file" value="output/results.jsonl" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;fillColor=#fff3e0;strokeColor=#ffb74d;fontSize=11;fontStyle=1;" vertex="1" parent="phase8">
+                    <mxGeometry x="40" y="172" width="160" height="35" as="geometry"/>
+                </mxCell>
+
+                <!-- Config YAML callout -->
+                <mxCell id="config_box" value="config.yaml&#xa;&#xa;evaluators:&#xa;  - name: &quot;relevance&quot;&#xa;    mapping:&#xa;      query: &quot;dataset.question&quot;&#xa;      response: &quot;model.response&quot;" style="rounded=1;whiteSpace=wrap;fillColor=#f5f5f5;strokeColor=#999999;fontSize=11;align=left;spacingLeft=8;dashed=1;dashPattern=8 4;" vertex="1" parent="1">
+                    <mxGeometry x="1130" y="470" width="260" height="150" as="geometry"/>
+                </mxCell>
+
+                <!-- ============ EDGES ============ -->
+
+                <!-- Row 1: Dataset → Input Mapping -->
+                <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#666666;" edge="1" parent="1" source="phase1" target="phase2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1_label" value="record" style="edgeLabel;fontSize=10;fontStyle=2;fontColor=#666666;" vertex="1" connectable="0" parent="e1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="15" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+
+                <!-- Input Mapping → Target -->
+                <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#2e7d32;" edge="1" parent="1" source="phase2" target="phase3">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2_label" value="mapped input" style="edgeLabel;fontSize=10;fontStyle=2;fontColor=#2e7d32;" vertex="1" connectable="0" parent="e2">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="15" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+
+                <!-- Target → OTel Enrichment -->
+                <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#1565c0;" edge="1" parent="1" source="phase3" target="phase5">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e3_label" value="raw output" style="edgeLabel;fontSize=10;fontStyle=2;fontColor=#1565c0;" vertex="1" connectable="0" parent="e3">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="15" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+
+                <!-- OTel → Evaluator Mapping (wraps down and left) -->
+                <mxCell id="e4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#c62828;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="phase5" target="phase6">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1230" y="390"/>
+                            <mxPoint x="180" y="390"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e4_label" value="enriched output" style="edgeLabel;fontSize=10;fontStyle=2;fontColor=#c62828;" vertex="1" connectable="0" parent="e4">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="-12" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+
+                <!-- Evaluator Mapping → Evaluators -->
+                <mxCell id="e6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#7b1fa2;" edge="1" parent="1" source="phase6" target="phase7">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e6_label" value="mapped fields" style="edgeLabel;fontSize=10;fontStyle=2;fontColor=#7b1fa2;" vertex="1" connectable="0" parent="e6">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="15" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+
+                <!-- Evaluators → Results -->
+                <mxCell id="e7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#e65100;" edge="1" parent="1" source="phase7" target="phase8">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e7_label" value="scores" style="edgeLabel;fontSize=10;fontStyle=2;fontColor=#e65100;" vertex="1" connectable="0" parent="e7">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint y="15" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+
+                <!-- Dashed line from config to Results -->
+                <mxCell id="config_to_eval" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=1;strokeColor=#999999;dashed=1;dashPattern=6 4;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="config_box" target="phase8">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+
+                <!-- Legend -->
+                <mxCell id="legend_title" value="Legend" style="text;fontSize=12;fontStyle=1;align=left;fillColor=none;strokeColor=none;fontColor=#555555;" vertex="1" parent="1">
+                    <mxGeometry x="40" y="700" width="60" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg1" value="" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+                    <mxGeometry x="40" y="728" width="20" height="15" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg1t" value="Dataset" style="text;fontSize=11;align=left;fillColor=none;strokeColor=none;fontColor=#555555;" vertex="1" parent="1">
+                    <mxGeometry x="65" y="726" width="80" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg2" value="" style="rounded=1;fillColor=#c8e6c9;strokeColor=#81c784;" vertex="1" parent="1">
+                    <mxGeometry x="160" y="728" width="20" height="15" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg2t" value="Input Mapping" style="text;fontSize=11;align=left;fillColor=none;strokeColor=none;fontColor=#555555;" vertex="1" parent="1">
+                    <mxGeometry x="185" y="726" width="110" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg3" value="" style="rounded=1;fillColor=#bbdefb;strokeColor=#64b5f6;" vertex="1" parent="1">
+                    <mxGeometry x="310" y="728" width="20" height="15" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg3t" value="Target" style="text;fontSize=11;align=left;fillColor=none;strokeColor=none;fontColor=#555555;" vertex="1" parent="1">
+                    <mxGeometry x="335" y="726" width="60" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg4" value="" style="rounded=1;fillColor=#ffcdd2;strokeColor=#ef9a9a;" vertex="1" parent="1">
+                    <mxGeometry x="420" y="728" width="20" height="15" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg4t" value="OTel Enrichment" style="text;fontSize=11;align=left;fillColor=none;strokeColor=none;fontColor=#555555;" vertex="1" parent="1">
+                    <mxGeometry x="445" y="726" width="120" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg5" value="" style="rounded=1;fillColor=#e1bee7;strokeColor=#ce93d8;" vertex="1" parent="1">
+                    <mxGeometry x="580" y="728" width="20" height="15" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg5t" value="Evaluator Mapping" style="text;fontSize=11;align=left;fillColor=none;strokeColor=none;fontColor=#555555;" vertex="1" parent="1">
+                    <mxGeometry x="605" y="726" width="130" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg6" value="" style="rounded=1;fillColor=#d1c4e9;strokeColor=#b39ddb;" vertex="1" parent="1">
+                    <mxGeometry x="750" y="728" width="20" height="15" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg6t" value="Evaluators" style="text;fontSize=11;align=left;fillColor=none;strokeColor=none;fontColor=#555555;" vertex="1" parent="1">
+                    <mxGeometry x="775" y="726" width="80" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg7" value="" style="rounded=1;fillColor=#ffe0b2;strokeColor=#ffb74d;" vertex="1" parent="1">
+                    <mxGeometry x="870" y="728" width="20" height="15" as="geometry"/>
+                </mxCell>
+                <mxCell id="leg7t" value="Results" style="text;fontSize=11;align=left;fillColor=none;strokeColor=none;fontColor=#555555;" vertex="1" parent="1">
+                    <mxGeometry x="895" y="726" width="60" height="20" as="geometry"/>
+                </mxCell>
+
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

@@ -8,6 +8,12 @@ All-in-one demo project for local-evals — showcases every evaluation pattern.
 
 > 📐 Editable source: [local-evals-architecture.drawio](docs/local-evals-architecture.drawio)
 
+### Engine Data Flow
+
+![Engine Data Flow with Mapping](docs/engine-data-flow.drawio.png)
+
+> 📐 Editable source: [engine-data-flow.drawio](docs/engine-data-flow.drawio)
+
 local-evals separates **what** to evaluate (config) from **how** to run it (CLI flags):
 
 - **Config** defines: dataset, targets, evaluators, connections
@@ -190,17 +196,69 @@ experiment:
     - name: "my_agent"
       type: "custom"          # or "azure_ai_model" or "azure_ai_agent"
       connection_name: "default"
+      mapping:                # Target mapping (optional)
+        query: "dataset.user_question"     # Input:  dataset.user_question → query
+        response: "target.raw_answer"      # Output: target.raw_answer → response
   evaluators:                 # Which metrics to compute
     - name: "relevance"
       mapping:
         query: "dataset.question"
-        response: "model.answer"
+        response: "model.response"
   connections:                # Shared connections for targets + LLM-as-judge evaluators
     default:
       azure_endpoint: "${AZURE_OPENAI_ENDPOINT}"
       azure_deployment: "${AZURE_OPENAI_DEPLOYMENT}"
       azure_ai_project: "${AZURE_AI_PROJECT}"   # Required for azure_ai_agent targets
 ```
+
+### Target Mapping
+
+Target mapping eliminates hardcoded column names by letting you configure how dataset fields map into target inputs and how target outputs map to canonical engine names. It works for **all target types** (custom, azure_ai_model, azure_ai_agent).
+
+#### Input Mapping (`dataset.X`)
+
+Maps dataset columns to the parameter names your target's `infer()` expects:
+
+```yaml
+targets:
+  - name: "my_agent"
+    mapping:
+      query: "dataset.user_question"    # target.infer() receives {"query": record["user_question"]}
+```
+
+Without mapping, the engine passes the raw dataset record to `infer()`. Built-in targets (azure_ai_model, azure_ai_agent) scan for `query`, `question`, `prompt`, or `input` as a fallback.
+
+#### Output Mapping (`target.X`)
+
+Maps target output keys to the canonical names the engine uses (`response`, `output_items`, etc.):
+
+```yaml
+targets:
+  - name: "my_agent"
+    mapping:
+      response: "target.raw_answer"     # target returns {"raw_answer": "..."} → engine sees {"response": "..."}
+```
+
+Without mapping, the engine looks for `response` or `answer` in the target output. With mapping, you can use any output key name.
+
+#### Combined Example
+
+```yaml
+targets:
+  - name: "my_agent"
+    type: "azure_ai_model"
+    mapping:
+      query: "dataset.user_question"       # Input:  rename user_question → query
+      response: "target.completion_text"   # Output: rename completion_text → response
+
+evaluators:
+  - name: "relevance"
+    mapping:
+      query: "dataset.user_question"       # From dataset
+      response: "model.response"           # From mapped target output
+```
+
+Unmapped fields pass through unchanged — existing targets work without any mapping configuration.
 
 ### Capabilities
 
