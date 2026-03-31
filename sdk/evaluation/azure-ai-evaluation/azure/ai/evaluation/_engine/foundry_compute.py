@@ -320,9 +320,8 @@ def _build_grade_code(
             f"        {param} = (\n"
             f"            item.get(\"{param}\", \"\") or\n"
             f"            item.get(\"{field}\", \"\") or\n"
-            f"            item.get(\"sample.output_text\", \"\") or\n"
             f"            (item.get(\"sample\", {{}}) or {{}}).get(\"output_text\", \"\") or\n"
-            f"            (sample.get(\"output_text\", \"\") if sample else \"\")\n"
+            f"            item.get(\"sample.output_text\", \"\")\n"
             f"        )\n"
         )
 
