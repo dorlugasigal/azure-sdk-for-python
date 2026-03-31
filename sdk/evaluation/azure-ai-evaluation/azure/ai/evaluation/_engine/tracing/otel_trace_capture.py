@@ -595,10 +595,16 @@ class OTelTraceCapture:
         except ImportError:
             pass  # MAF not installed
 
-        # Enable LangChain Azure AI OTel tracer if available
-        # This callback emits full GenAI semconv spans including gen_ai.tool.definitions,
-        # execute_tool spans with arguments/results, and invoke_agent spans.
-        # It's attached as a callback to LangChain runs automatically.
+        # Enable LangChain instrumentation
+        # 1. opentelemetry-instrumentation-langchain auto-instruments all chains/tools
+        try:
+            from opentelemetry.instrumentation.langchain import LangchainInstrumentor
+            LangchainInstrumentor().instrument()
+            logger.info("OTel trace capture: LangChain auto-instrumentation activated")
+        except ImportError:
+            pass  # opentelemetry-instrumentation-langchain not installed
+
+        # 2. LangChain Azure AI OTel tracer (callback-based, richer spans)
         self._langchain_tracer = None
         try:
             from langchain_azure_ai.callbacks.tracers import AzureAIOpenTelemetryTracer
