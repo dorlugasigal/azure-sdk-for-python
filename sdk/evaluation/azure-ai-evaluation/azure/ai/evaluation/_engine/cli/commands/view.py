@@ -31,7 +31,7 @@ def _display_result_summary(summary_path: str) -> None:
         click.echo(json.dumps(data, indent=2))
 
     # Also display as a results table if the data has the right shape
-    if "aggregated_evaluators" in data or "aggregated_metrics" in data or "total_records" in data:
+    if "aggregated_evaluators" in data or "total_records" in data:
         show_results_table(data)
 
 
@@ -163,11 +163,11 @@ def view(port, no_browser):
                         if line.strip():
                             records.append(json.loads(line))
 
-            agg = _flatten_agg(summary_data.get("aggregated_evaluators", summary_data.get("aggregated_metrics", {})))
+            agg = _flatten_agg(summary_data.get("aggregated_evaluators", {}))
             # Add standard overview
             agg["number_of_records"] = summary_data.get("total_records", len(records))
             # Compute average response time from records
-            times = [r.get("system_evaluators", r.get("system_metrics", {})).get("response_time", {}).get("response_time_ms", 0) for r in records]
+            times = [r.get("system_evaluators", {}).get("response_time", {}).get("response_time_ms", 0) for r in records]
             if times:
                 agg["average_response_time_ms"] = sum(times) / len(times)
 
@@ -282,7 +282,7 @@ def view(port, no_browser):
                         try:
                             with open(summaries[0]) as sf:
                                 first_summary = json.load(sf)
-                            agg = first_summary.get("aggregated_evaluators", first_summary.get("aggregated_metrics", {}))
+                            agg = first_summary.get("aggregated_evaluators", {})
                             for k, v in agg.items():
                                 if isinstance(v, dict):
                                     evaluator_names.extend(v.keys())

@@ -83,7 +83,7 @@ def _discover_in_directory(directory: Path) -> None:
         "experiment",
     }
 
-    target_decorators = {"model", "metric", "dataset", "target", "evaluator"}
+    target_decorators = {"target", "evaluator", "dataset"}
     exclude_dirs_frozen = frozenset(exclude_dirs)
 
     def _is_excluded_path(path: Path) -> bool:

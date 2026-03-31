@@ -97,19 +97,17 @@ class EvaluatorsAggregator:
                         tags = {
                             **record.get("args", {}),
                             **record.get("metadata", {}),
-                            "target_name": record.get("model_display_name", record.get("model_name", "")),
+                            "target_name": record.get("model_display_name", ""),
                         }
 
-                    # Collect per-evaluator scores (engine emits both "evaluators" and "metrics")
-                    evaluators_dict = record.get("evaluators", record.get("metrics", {}))
+                    evaluators_dict = record.get("evaluators", {})
                     for evaluator_name, scores in evaluators_dict.items():
                         if scores is None or (isinstance(scores, dict) and "error" in scores):
                             evaluator_failures[evaluator_name] += 1
                             continue
                         evaluator_scores[evaluator_name].append(scores)
 
-                    # Accumulate response time from system evaluators / system metrics
-                    system = record.get("system_evaluators", record.get("system_metrics", {}))
+                    system = record.get("system_evaluators", {})
                     rt = system.get("response_time", {})
                     total_response_time += rt.get("response_time_ms", 0)
 

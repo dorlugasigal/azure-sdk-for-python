@@ -163,7 +163,7 @@ class OutputFormatter:
             except Exception:
                 continue
 
-            aggregated = summary_data.get("aggregated_evaluators") or summary_data.get("aggregated_metrics") or {}
+            aggregated = summary_data.get("aggregated_evaluators", {})
             if not isinstance(aggregated, dict):
                 continue
 
@@ -201,7 +201,7 @@ class OutputFormatter:
                         elif "answer" in output:
                             row["outputs.response"] = output.get("answer")
 
-                    evaluators = item.get("evaluators") or item.get("metrics") or {}
+                    evaluators = item.get("evaluators", {})
                     if isinstance(evaluators, dict):
                         for evaluator_name, evaluator_data in evaluators.items():
                             if isinstance(evaluator_data, dict):

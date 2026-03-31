@@ -81,25 +81,18 @@ def _resolve_connection(
 def _setup_azure_openai_client(azure_endpoint: str) -> "openai.OpenAI":
     """Create an :class:`openai.OpenAI` client authenticated via ``DefaultAzureCredential``.
 
-    :param azure_endpoint: The Azure AI / Cognitive Services endpoint URL.
+    :param azure_endpoint: The Azure AI endpoint URL.
     :returns: Configured OpenAI client.
     :rtype: openai.OpenAI
     """
     from azure.identity import DefaultAzureCredential, get_bearer_token_provider
     from openai import OpenAI
 
-    if ".services.ai.azure.com" in azure_endpoint:
-        token_scope = "https://ai.azure.com/.default"
-    else:
-        token_scope = "https://cognitiveservices.azure.com/.default"
-
     token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(), token_scope,
+        DefaultAzureCredential(), "https://ai.azure.com/.default",
     )
 
-    base_url = azure_endpoint.rstrip("/")
-    if not base_url.endswith("/openai/v1"):
-        base_url = base_url + "/openai/v1/"
+    base_url = f"{azure_endpoint.rstrip('/')}/openai/v1"
 
     return OpenAI(base_url=base_url, api_key=token_provider)
 
@@ -253,7 +246,7 @@ class TargetFactory:
                 conn = _resolve_connection(
                     target_cfg.connection_name, connections_registry, context,
                 )
-                azure_endpoint = conn.get("azure_endpoint", "") or conn.get("endpoint", "")
+                azure_endpoint = conn.get("azure_endpoint", "")
                 self._client = _setup_azure_openai_client(azure_endpoint)
 
             def infer(self, input_data: Dict[str, Any]) -> Dict[str, Any]:

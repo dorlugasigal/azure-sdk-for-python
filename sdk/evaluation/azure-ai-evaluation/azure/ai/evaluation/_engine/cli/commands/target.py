@@ -24,10 +24,7 @@ DEFAULT_CONFIG = "config.yaml"
 
 
 def read_targets_from_config(config_path: Path) -> List[Dict[str, Any]]:
-    """Read target configurations from the YAML config file.
-
-    Supports both ``targets`` and the legacy ``models`` key.
-    """
+    """Read target configurations from the YAML config file."""
     try:
         import yaml
 
@@ -40,7 +37,7 @@ def read_targets_from_config(config_path: Path) -> List[Dict[str, Any]]:
         return []
 
     experiment = data["experiment"]
-    targets = experiment.get("targets", experiment.get("models", []))
+    targets = experiment.get("targets", [])
     return targets if targets else []
 
 
@@ -73,13 +70,7 @@ def add_target_to_config(
 
         experiment = data.setdefault("experiment", {})
 
-        # Prefer "targets" key; fall back to "models" if already present
-        if "targets" not in experiment and "models" in experiment:
-            targets_key = "models"
-        else:
-            targets_key = "targets"
-
-        targets = experiment.setdefault(targets_key, [])
+        targets = experiment.setdefault("targets", [])
 
         entry: Dict[str, Any] = {
             "name": name,

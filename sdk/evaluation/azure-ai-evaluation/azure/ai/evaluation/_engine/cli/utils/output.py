@@ -71,7 +71,7 @@ def show_results_table(results: Dict[str, Any]) -> None:
     failed = results.get("failed_records", 0)
     status = results.get("status", "completed")
     output_path_str = results.get("output_path", "")
-    aggregated = results.get("aggregated_evaluators", results.get("aggregated_metrics", {}))
+    aggregated = results.get("aggregated_evaluators", {})
 
     if _HAS_RICH:
         table = Table(title="Evaluation Results", border_style="green")

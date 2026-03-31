@@ -67,7 +67,7 @@ def clear(path, config, force, preview, keep_last, before, after, logs_only):
     if path == "output":
         # Auto-detect config file if not specified
         if config is None:
-            for candidate in ("config.yaml", "evals.yaml", "experiment/config.yaml"):
+            for candidate in ("config.yaml", "evals.yaml"):
                 if os.path.exists(candidate):
                     config = candidate
                     break
@@ -81,9 +81,6 @@ def clear(path, config, force, preview, keep_last, before, after, logs_only):
                         path = configured_path
             except Exception:
                 pass
-        # Fall back to legacy path if new default doesn't exist
-        if not os.path.isdir(path) and os.path.isdir("experiment/output"):
-            path = "experiment/output"
 
     if not os.path.isdir(path):
         echo_error(f"Directory '{path}' does not exist.")

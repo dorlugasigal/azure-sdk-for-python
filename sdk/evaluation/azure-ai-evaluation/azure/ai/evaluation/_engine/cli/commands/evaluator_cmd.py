@@ -40,7 +40,7 @@ def read_evaluators_from_config(config_path: Path) -> List[Dict[str, Any]]:
         return []
 
     experiment = data["experiment"]
-    evaluators = experiment.get("evaluators", experiment.get("metrics", []))
+    evaluators = experiment.get("evaluators", [])
     return evaluators if evaluators else []
 
 
@@ -68,12 +68,7 @@ def add_evaluator_to_config(
 
         experiment = data.setdefault("experiment", {})
 
-        if "evaluators" not in experiment and "metrics" in experiment:
-            key = "metrics"
-        else:
-            key = "evaluators"
-
-        evaluators = experiment.setdefault(key, [])
+        evaluators = experiment.setdefault("evaluators", [])
 
         entry: Dict[str, Any] = {"name": name}
         if mapping:

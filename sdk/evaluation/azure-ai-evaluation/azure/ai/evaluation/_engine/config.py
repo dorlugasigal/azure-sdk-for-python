@@ -80,9 +80,9 @@ class EvaluatorConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_mapping_format(self) -> "EvaluatorConfig":
-        """Validate mapping values match 'target.X', 'model.X', or 'dataset.X' format."""
+        """Validate mapping values match 'target.X' or 'dataset.X' format."""
         if self.mapping:
-            pattern = re.compile(r"^(target|model|dataset)\.[^.]+$")
+            pattern = re.compile(r"^(target|dataset)\.[^.]+$")
             for field, mapping_val in self.mapping.items():
                 if not pattern.match(mapping_val):
                     raise ValueError(
@@ -168,7 +168,7 @@ class ExperimentConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def normalize_config(cls, values: Any) -> Any:
-        """Normalize connections format and handle models->targets backward compat."""
+        """Normalize connections format."""
         if isinstance(values, dict) and "connections" in values:
             conns = values["connections"]
             if isinstance(conns, dict):
@@ -176,15 +176,6 @@ class ExperimentConfig(BaseModel):
                     {"name": k, **v} if isinstance(v, dict) else {"name": k}
                     for k, v in conns.items()
                 ]
-        # Backward compat: accept "models" as alias for "targets"
-        if isinstance(values, dict) and "models" in values and "targets" not in values:
-            values["targets"] = values.pop("models")
-        # Backward compat: accept "metrics" as alias for "evaluators"
-        if isinstance(values, dict) and "metrics" in values and "evaluators" not in values:
-            values["evaluators"] = values.pop("metrics")
-        # Backward compat: accept "compute_backend" as alias for "compute"
-        if isinstance(values, dict) and "compute_backend" in values and "compute" not in values:
-            values["compute"] = values.pop("compute_backend")
         return values
 
 

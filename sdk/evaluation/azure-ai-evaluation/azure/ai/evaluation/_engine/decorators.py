@@ -30,7 +30,7 @@ class BaseEvaluator(ABC):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, context: Optional[ExecutionContext] = None):
         config = config or {}
-        self.name = config.get("name", getattr(self.__class__, "_metric_name", self.__class__.__name__))
+        self.name = config.get("name", self.__class__.__name__)
         self.display_name = config.get("display_name") or self.name
         self.context = context
         self.mapping = config.get("mapping", {})

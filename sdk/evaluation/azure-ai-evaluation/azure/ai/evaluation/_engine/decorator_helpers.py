@@ -77,7 +77,3 @@ def validate_required_methods(
                 f"Class '{cls.__name__}' must implement the '{method_name}' method"
             )
 
-
-# Backward-compatible aliases (match private names used in decorators.py)
-_get_missing_params = get_missing_params
-_get_params_from_config = get_params_from_config

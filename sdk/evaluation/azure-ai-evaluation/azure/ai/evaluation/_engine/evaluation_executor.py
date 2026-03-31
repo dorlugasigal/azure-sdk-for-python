@@ -545,7 +545,6 @@ class EvaluationExecutor:
             "model": model_name,
             "total_records": total_records,
             "aggregated_evaluators": aggregated,
-            "aggregated_metrics": aggregated,  # backward compat
         }
 
         summary_path = results_path.parent / f"{model_name}_summary.json"

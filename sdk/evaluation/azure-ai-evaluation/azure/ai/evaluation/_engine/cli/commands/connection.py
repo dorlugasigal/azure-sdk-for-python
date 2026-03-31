@@ -308,7 +308,7 @@ def discover_connections(config):
     # Try to extract account name from endpoint or project name
     project_name_env = os.environ.get("AZURE_AI_PROJECT_NAME")
     if project_endpoint:
-        # endpoint like https://account.cognitiveservices.azure.com/
+        # endpoint like https://account.services.ai.azure.com/
         import re
         m = re.match(r"https://([^.]+)\.", project_endpoint)
         if m:
@@ -397,7 +397,7 @@ def discover_connections(config):
         echo_error(err)
         sys.exit(1)
 
-    conn_endpoint = endpoint or f"https://{account}.cognitiveservices.azure.com"
+    conn_endpoint = endpoint or f"https://{account}.services.ai.azure.com"
 
     # Write to config
     if os.path.exists(config):

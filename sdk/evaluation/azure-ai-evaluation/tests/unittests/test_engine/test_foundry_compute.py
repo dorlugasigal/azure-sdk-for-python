@@ -12,7 +12,6 @@ import pytest
 
 from azure.ai.evaluation._engine.foundry_compute import (
     EVALUATOR_TO_BUILTIN,
-    METRIC_TO_BUILTIN,
     NLP_EVALUATORS,
     _ORDINAL_1_5_EVALUATORS,
     _POLL_INTERVAL_SECONDS,
@@ -42,9 +41,6 @@ class TestEvaluatorMapping:
     def test_all_values_have_builtin_prefix(self) -> None:
         for name, builtin in EVALUATOR_TO_BUILTIN.items():
             assert builtin.startswith("builtin."), f"{name} → {builtin}"
-
-    def test_backward_compat_alias(self) -> None:
-        assert METRIC_TO_BUILTIN is EVALUATOR_TO_BUILTIN
 
     def test_known_evaluators_present(self) -> None:
         expected = {

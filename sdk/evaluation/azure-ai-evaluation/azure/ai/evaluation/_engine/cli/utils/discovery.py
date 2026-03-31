@@ -15,7 +15,7 @@ from .constants import BUILTIN_EVALUATORS
 
 def import_local_components(directory: str) -> None:
     """Import Python files in directory (and subdirs) that contain @target, @evaluator, or @dataset decorators."""
-    decorator_names = ("target", "model", "metric", "evaluator", "dataset")
+    decorator_names = ("target", "evaluator", "dataset")
 
     for root, dirs, files in os.walk(directory):
         # Skip hidden dirs, __pycache__, node_modules, .venv

@@ -204,16 +204,8 @@ def discover_foundry_project() -> dict[str, str] | None:
         echo("  Could not discover endpoint automatically.")
         endpoint = click.prompt("  Endpoint URL", type=str).strip()
 
-    # Normalize domain: cognitiveservices.azure.com → services.ai.azure.com
-    endpoint = endpoint.rstrip("/")
-    if ".cognitiveservices.azure.com" in endpoint:
-        import re as _re
-
-        m = _re.match(r"https://([^.]+)\.cognitiveservices\.azure\.com(.*)", endpoint)
-        if m:
-            endpoint = f"https://{m.group(1)}.services.ai.azure.com{m.group(2)}"
-
     # Build project-scoped endpoint: AIProjectClient requires /api/projects/{name}
+    endpoint = endpoint.rstrip("/")
     if "/api/projects/" not in endpoint:
         endpoint = f"{endpoint}/api/projects/{project_name}"
 

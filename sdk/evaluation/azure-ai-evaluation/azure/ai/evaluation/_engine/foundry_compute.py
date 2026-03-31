@@ -41,9 +41,6 @@ EVALUATOR_TO_BUILTIN: Dict[str, str] = {
     "task_navigation_efficiency": "builtin.task_navigation_efficiency",
 }
 
-# Backward-compatible alias
-METRIC_TO_BUILTIN = EVALUATOR_TO_BUILTIN
-
 # NLP-based evaluators that don't need a model deployment
 NLP_EVALUATORS = {
     "builtin.f1_score",
@@ -130,26 +127,6 @@ def _build_portal_url(endpoint: str, eval_id: str) -> Optional[str]:
     return None
 
 
-def _normalize_endpoint(endpoint: str) -> str:
-    """Normalize a Foundry endpoint to the format required by AIProjectClient.
-
-    Handles two transformations:
-    1. Legacy ``cognitiveservices.azure.com`` → ``services.ai.azure.com``
-    2. Ensures endpoint does NOT have a trailing slash (clean base URL).
-    """
-    import re
-
-    endpoint = endpoint.rstrip("/")
-
-    if ".cognitiveservices.azure.com" in endpoint:
-        m = re.match(r"https://([^.]+)\.cognitiveservices\.azure\.com(.*)", endpoint)
-        if m:
-            account = m.group(1)
-            path = m.group(2)  # preserve any /api/projects/... path
-            endpoint = f"https://{account}.services.ai.azure.com{path}"
-
-    return endpoint
-
 
 def _resolve_project_endpoint(
     config: Config,
@@ -157,17 +134,17 @@ def _resolve_project_endpoint(
 ) -> str:
     """Determine the Foundry project endpoint from params or config."""
     if project_endpoint:
-        return _normalize_endpoint(project_endpoint)
+        return project_endpoint.rstrip("/")
 
     compute = config.experiment.compute
     if compute and compute.azure_ai_project:
-        return _normalize_endpoint(compute.azure_ai_project)
+        return compute.azure_ai_project.rstrip("/")
 
     # Search connections for a project endpoint
     for conn in config.experiment.connections or []:
         endpoint = getattr(conn, "azure_ai_project", None) or getattr(conn, "endpoint", None)
         if endpoint:
-            return _normalize_endpoint(endpoint)
+            return endpoint.rstrip("/")
 
     raise ValueError(
         "No Foundry project endpoint found. Provide 'project_endpoint', set "

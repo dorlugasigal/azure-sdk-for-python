@@ -45,18 +45,12 @@ class EvaluationOutput:
     results: List[EvaluatorResult] = field(default_factory=list)  # Foundry-aligned per-evaluator results
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary.
-
-        Emits both 'evaluators' (new) and 'metrics' (Foundry compat) keys
-        so results work in both our local viewer and the Foundry portal.
-        """
+        """Convert to dictionary."""
         return {
             **self.inference_output.to_dict(),
             "run_id": self.run_id,
             "evaluators": self.evaluators,
-            "metrics": self.evaluators,
             "system_evaluators": self.system_evaluators,
-            "system_metrics": self.system_evaluators,
             "model_display_name": self.model_display_name,
             "metadata": self.metadata,
             "results": [r.to_dict() for r in self.results],
