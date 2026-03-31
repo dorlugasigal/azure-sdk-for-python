@@ -2,13 +2,14 @@
 # Licensed under the MIT License.
 """cloud command — configure Azure cloud settings for evaluation experiments.
 
-Provides ``cloud set`` and ``cloud show`` subcommands for managing
-the ``cloud`` block in the project configuration (foundry endpoint,
-project, default evaluator deployment, and App Insights).
+Provides ``cloud set``, ``cloud show``, and ``cloud discover`` subcommands
+for managing the ``cloud`` block in the project configuration (foundry
+endpoint, project, default evaluator deployment, and App Insights).
 """
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 
 import click
@@ -163,3 +164,102 @@ def show_cloud(config):
             info[key] = val
 
     show_panel(info, title="Cloud Configuration")
+
+
+# ---------------------------------------------------------------------------
+# cloud discover
+# ---------------------------------------------------------------------------
+
+
+def _check_az_cli() -> bool:
+    """Return True if the ``az`` CLI is available on PATH."""
+    return shutil.which("az") is not None
+
+
+@cloud.command(name="discover")
+@click.option("--config", "-c", default=None, help="Path to config file")
+@click.help_option("--help", "-h")
+def discover_cloud(config):
+    """Discover Azure AI Foundry project and deployments via az CLI.
+
+    Auto-detects your Foundry project and available model deployments,
+    then writes the results to the experiment cloud block.
+
+    \b
+    Examples:
+        ev cloud discover
+    """
+    _console = get_console()
+    _HAS_RICH = has_rich()
+
+    config = resolve_config_path(config)
+
+    if not _check_az_cli():
+        echo_error("Azure CLI (az) is not installed or not on PATH.")
+        click.echo("\nInstall it from: https://aka.ms/installazurecli")
+        click.echo("Or configure manually: ev cloud set --foundry-endpoint <url>")
+        sys.exit(1)
+
+    from ..utils.azure_discovery import discover_foundry_project
+
+    result = discover_foundry_project()
+    if result is None:
+        echo_error("Discovery cancelled or failed.")
+        sys.exit(1)
+
+    project_endpoint = result.get("endpoint", "")
+    deployment = result.get("deployment", "")
+
+    # Derive the OpenAI-compatible endpoint from the project endpoint.
+    # Project endpoint: https://account.services.ai.azure.com/api/projects/name
+    # Foundry endpoint: https://account.services.ai.azure.com/openai/v1
+    foundry_endpoint = project_endpoint
+    api_projects_idx = project_endpoint.find("/api/projects/")
+    if api_projects_idx != -1:
+        foundry_endpoint = project_endpoint[:api_projects_idx] + "/openai/v1"
+    else:
+        foundry_endpoint = project_endpoint.rstrip("/") + "/openai/v1"
+
+    # Write to config
+    if os.path.exists(config):
+        cfg_data = load_yaml_ruamel(config)
+        if cfg_data is None:
+            cfg_data = {}
+    else:
+        cfg_data = {"experiment": {}}
+
+    experiment = cfg_data.setdefault("experiment", {})
+
+    cloud_section: dict = {
+        "foundry_endpoint": foundry_endpoint,
+        "foundry_project": project_endpoint,
+    }
+    if deployment:
+        cloud_section["default_evaluator_deployment_name"] = deployment
+
+    # Preserve existing app_insight if set
+    existing_cloud = experiment.get("cloud")
+    if isinstance(existing_cloud, dict) and existing_cloud.get("app_insight"):
+        cloud_section["app_insight"] = existing_cloud["app_insight"]
+
+    experiment["cloud"] = cloud_section
+
+    # Remove legacy compute block if it only had foundry config
+    compute_cfg = experiment.get("compute")
+    if isinstance(compute_cfg, dict) and compute_cfg.get("type") == "foundry":
+        del experiment["compute"]
+
+    write_yaml_ruamel(config, cfg_data)
+
+    if _HAS_RICH:
+        _console.print(f"\n[green]✓[/green] Cloud configuration saved to [cyan]{config}[/cyan]")
+        _console.print(f"  foundry_endpoint: {foundry_endpoint}")
+        _console.print(f"  foundry_project:  {project_endpoint}")
+        if deployment:
+            _console.print(f"  default_evaluator_deployment_name: {deployment}")
+    else:
+        click.echo(f"\n✓ Cloud configuration saved to {config}")
+        click.echo(f"  foundry_endpoint: {foundry_endpoint}")
+        click.echo(f"  foundry_project:  {project_endpoint}")
+        if deployment:
+            click.echo(f"  default_evaluator_deployment_name: {deployment}")
