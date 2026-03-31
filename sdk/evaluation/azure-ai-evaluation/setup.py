@@ -95,6 +95,7 @@ setup(
             "opentelemetry-exporter-otlp-proto-http>=1.17.0,<1.39.0",
             "azure-monitor-opentelemetry-exporter>=1.0.0b17",
             "opentelemetry-instrumentation-openai-v2>=2.0b0",
+            "opentelemetry-instrumentation-langchain>=0.30.0",
         ],
     },
     project_urls={
