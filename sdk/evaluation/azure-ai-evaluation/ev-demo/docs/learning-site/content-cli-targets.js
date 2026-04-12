@@ -187,56 +187,45 @@ ev discover
 #   - qa_dataset         (custom, datasets/qa.py)`, 'bash', { title: 'ev discover -- Usage' })}
 
     <!-- ev eval -->
-    <h3 id="cli-eval">ev eval -- Quick Single-Evaluator Run</h3>
-    <p>Runs a single evaluator against provided data without requiring a full config file. Useful for quick testing and iteration.</p>
+    <h3 id="cli-eval">ev evaluator -- Manage Evaluators</h3>
+    <p>A command group for managing evaluators in the project. Supports listing discovered evaluators and adding new ones from templates.</p>
 
-    ${createCodeBlock(`# Quick evaluation without a config file
-ev eval coherence --dataset data/responses.jsonl
+    ${createCodeBlock(`# List discovered evaluators
+ev evaluator list
 
-# Evaluate with specific parameters
-ev eval groundedness --dataset data/grounded.jsonl`, 'bash', { title: 'ev eval -- Examples' })}
+# Add a new evaluator from template
+ev evaluator add my_custom_metric`, 'bash', { title: 'ev evaluator -- Examples' })}
 
-    <!-- ev init-config -->
-    <h3 id="cli-init-config">ev init-config -- Generate Config from Project</h3>
-    <p>Generates a <code>config.yaml</code> from an existing project structure by scanning for targets, evaluators, and datasets already present in the directory.</p>
+    <!-- ev target -->
+    <h3 id="cli-target">ev target -- Manage Targets</h3>
+    <p>A command group for managing targets in the project. Supports listing discovered targets and adding new ones.</p>
 
-    ${createCodeBlock(`# Generate config from current directory
-ev init-config
+    ${createCodeBlock(`# List discovered targets
+ev target list
 
-# Writes config.yaml based on discovered:
-#   - targets/ directory contents
-#   - evaluators/ directory contents
-#   - datasets/ directory contents`, 'bash', { title: 'ev init-config -- Usage' })}
+# Add a new target from template
+ev target add my_agent`, 'bash', { title: 'ev target -- Examples' })}
 
-    <!-- ev env -->
-    <h3 id="cli-env">ev env -- Show Environment Information</h3>
-    <p>Displays diagnostic information about the current environment: Python version, installed packages, engine paths, and Azure configuration.</p>
+    <!-- ev dataset -->
+    <h3 id="cli-dataset">ev dataset -- Manage Datasets</h3>
+    <p>A command group for managing datasets in the project.</p>
 
-    ${createCodeBlock(`ev env
+    ${createCodeBlock(`# List discovered datasets
+ev dataset list`, 'bash', { title: 'ev dataset -- Examples' })}
 
-# Example output:
-# Python:     3.11.9
-# Engine:     azure-ai-evaluation 1.4.0
-# Platform:   macOS-14.5-arm64
-# Packages:   promptflow-core==1.14.0, openai==1.40.0
-# Config:     ~/.ev/config.json`, 'bash', { title: 'ev env -- Usage' })}
+    <!-- ev clear -->
+    <h3 id="cli-clear">ev clear -- Clear Output</h3>
+    <p>Clears evaluation output directories and cached artifacts.</p>
 
-    <!-- ev convert -->
-    <h3 id="cli-convert">ev convert -- Convert Between Formats</h3>
-    <p>Converts between evaluation data formats (e.g., JSONL to CSV, or between different evaluation result schemas).</p>
+    ${createCodeBlock(`# Clear evaluation output
+ev clear`, 'bash', { title: 'ev clear -- Usage' })}
 
-    ${createCodeBlock(`# Convert JSONL dataset to CSV
-ev convert --input data.jsonl --output data.csv`, 'bash', { title: 'ev convert -- Usage' })}
+    <!-- ev cloud -->
+    <h3 id="cli-cloud">ev cloud -- Cloud Operations</h3>
+    <p>Manages cloud compute operations for remote evaluation on Azure AI Foundry.</p>
 
-    <!-- ev login -->
-    <h3 id="cli-login">ev login -- Azure Authentication</h3>
-    <p>Authenticates with Azure for remote evaluation and Azure AI Foundry integration. Wraps the Azure Identity credential flow.</p>
-
-    ${createCodeBlock(`# Interactive Azure login
-ev login
-
-# Verify authentication status
-ev login --check`, 'bash', { title: 'ev login -- Usage' })}
+    ${createCodeBlock(`# Cloud operations
+ev cloud`, 'bash', { title: 'ev cloud -- Usage' })}
 
     <h3 id="cli-summary">Command Summary</h3>
     ${createTable(
@@ -245,13 +234,13 @@ ev login --check`, 'bash', { title: 'ev login -- Usage' })}
         ['<code>ev run</code>', 'Execute evaluation pipeline', '<code>-c, -t, -r, --trace</code>'],
         ['<code>ev new</code>', 'Scaffold new project', '<code>-i, -f, --from-source</code>'],
         ['<code>ev validate</code>', 'Validate config without running', '<code>-c, --json</code>'],
+        ['<code>ev discover</code>', 'List discovered components', '<code>--json</code>'],
         ['<code>ev view</code>', 'Browser-based result viewer', '<code>-p, --no-browser</code>'],
-        ['<code>ev discover</code>', 'List discovered components', ''],
-        ['<code>ev eval</code>', 'Quick single-evaluator run', '<code>--dataset</code>'],
-        ['<code>ev init-config</code>', 'Generate config from project', ''],
-        ['<code>ev env</code>', 'Show environment info', ''],
-        ['<code>ev convert</code>', 'Convert data formats', '<code>--input, --output</code>'],
-        ['<code>ev login</code>', 'Azure authentication', '<code>--check</code>'],
+        ['<code>ev clear</code>', 'Clear output directories', ''],
+        ['<code>ev cloud</code>', 'Cloud compute operations', ''],
+        ['<code>ev target</code>', 'Manage targets (list, add)', '<code>list, add</code>'],
+        ['<code>ev evaluator</code>', 'Manage evaluators (list, add)', '<code>list, add</code>'],
+        ['<code>ev dataset</code>', 'Manage datasets (list, add)', '<code>list, add</code>'],
       ]
     )}
 
@@ -278,43 +267,51 @@ ev login --check`, 'bash', { title: 'ev login -- Usage' })}
     <p>The <code>TargetFactory</code> reads the <code>targets</code> section of the YAML config, expands Cartesian products for list-valued arguments, and instantiates each variant.</p>
 
     ${createCodeBlock(`class TargetFactory:
-    def __init__(self, config: Config, registry: Dict):
+    def __init__(self, config, execution_context, connections_registry,
+                 cloud_config=None, logger=None):
         self._config = config
-        self._registry = registry
+        self._execution_context = execution_context
+        self._connections_registry = connections_registry
+        self._cloud_config = cloud_config
 
-    def create_targets(self) -> List[TargetInstance]:
-        targets = []
-        for target_config in self._config.experiment.targets:
-            expanded = expand_combinations(target_config)
-            for variant in expanded:
-                instance = self._create_single(variant)
-                targets.append(instance)
-        return targets
+    def register_targets(self, model_filter=None) -> Dict[str, Any]:
+        """Register all targets from config and return the targets registry dict."""
+        targets_registry = {}
+        for target_cfg in self._config.experiment.targets:
+            if model_filter and target_cfg.name not in model_filter:
+                continue
+            self._register_target(target_cfg, targets_registry)
+        return targets_registry
 
-    def _create_single(self, config: TargetVariantConfig) -> TargetInstance:
-        if config.type == "custom":
-            cls = self._registry.get(config.name)
-            return cls(**config.args)
-        elif config.type == "azure_ai_model":
-            return AzureAIModelTarget(config)
-        elif config.type == "azure_ai_agent":
-            return AzureAIAgentTarget(config)`, 'python', { filePath: '_engine/target_factory.py', title: 'TargetFactory -- Core Logic' })}
+    def _register_target(self, target_cfg, targets_registry):
+        target_type = getattr(target_cfg, "type", "custom")
+        if target_type in self._target_dispatchers:
+            class_factory, arg_combinator = self._target_dispatchers[target_type]
+            target_class = class_factory(target_cfg)
+            arg_combinations = arg_combinator(target_cfg)
+        else:
+            # Custom target — look up from registry
+            target_class = TARGET_REGISTRY.get(target_cfg.name)
+            arg_combinations = generate_args_combinations(target_cfg)
+        self._instantiate_variants(
+            target_cfg.name, target_class, target_cfg,
+            arg_combinations, targets_registry)`, 'python', { filePath: '_engine/targets/target_factory.py', title: 'TargetFactory -- Core Logic' })}
 
     ${createCallTrace('TargetFactory Execution Flow', [
-      { module: 'TargetFactory', func: 'create_targets()', file: '_engine/target_factory.py', tag: 'engine',
-        detail: 'Iterates over config.experiment.targets entries from the YAML config.' },
-      { module: 'combination_utils', func: 'expand_combinations(target_config)', file: '_engine/combination_utils.py', tag: 'engine',
-        detail: 'Detects list-valued args and computes Cartesian product of all combinations.' },
-      { module: 'TargetFactory', func: '_create_single(variant)', file: '_engine/target_factory.py', tag: 'engine',
-        detail: 'Dispatches by config.type: looks up registry for custom, or constructs built-in target class.' },
-      { module: 'Registry', func: 'registry.get(config.name)', file: '_engine/decorators.py', tag: 'data',
+      { module: 'TargetFactory', func: 'register_targets(model_filter)', file: '_engine/targets/target_factory.py', tag: 'engine',
+        detail: 'Iterates over config.experiment.targets entries from the YAML config. Filters by model_filter if provided.' },
+      { module: 'TargetFactory', func: '_register_target(target_cfg)', file: '_engine/targets/target_factory.py', tag: 'engine',
+        detail: 'Dispatches by config.type using _target_dispatchers dict: azure_ai_model, azure_ai_agent, or falls back to custom registry lookup.' },
+      { module: 'combination_utils', func: 'generate_args_combinations(target_cfg)', file: '_engine/combination_utils.py', tag: 'engine',
+        detail: 'Detects list-valued args and computes Cartesian product of all combinations using itertools.product.' },
+      { module: 'Registry', func: 'TARGET_REGISTRY.get(config.name)', file: '_engine/decorators.py', tag: 'data',
         detail: 'For custom type: retrieves the class registered via @target(name=...) decorator.' },
-      { module: 'Target', func: 'cls(**config.args)', file: 'targets/*.py', tag: 'target',
-        detail: 'Constructs the target instance, passing expanded args as keyword arguments.' },
+      { module: 'TargetFactory', func: '_instantiate_variants()', file: '_engine/targets/target_factory.py', tag: 'target',
+        detail: 'Creates target instances for each argument combination, using simplify_combination_names for readable variant names.' },
     ])}
 
     <h3 id="cartesian-expansion">Cartesian Product Expansion</h3>
-    <p>When target arguments contain lists, <code>expand_combinations()</code> generates every combination. This is how you compare multiple models or parameter settings in a single run.</p>
+    <p>When target arguments contain lists, <code>generate_args_combinations()</code> in <code>combination_utils.py</code> generates every combination using <code>itertools.product</code>. This is how you compare multiple models or parameter settings in a single run.</p>
 
     ${createCodeBlock(`# config.yaml -- list-valued args trigger Cartesian expansion
 targets:
@@ -345,19 +342,41 @@ targets:
       ground_truth: dataset.answer   # dataset column "answer" -> target param "ground_truth"`, 'yaml', { filePath: 'config.yaml', title: 'Input Mapping Configuration' })}
 
     ${createCodeBlock(`# target_mapping.py -- How mapping is applied at runtime
-class TargetInputMapper:
-    def __init__(self, mapping: Dict[str, str]):
-        self._mapping = mapping  # {target_param: "dataset.column_name"}
+def _apply_target_input_mapping(
+    record: Dict[str, Any], mapping: Dict[str, str]
+) -> Dict[str, Any]:
+    """Apply target input mapping: build mapped input from dataset fields.
 
-    def apply(self, dataset_row: Dict[str, Any]) -> Dict[str, Any]:
-        """Remap dataset fields to target parameter names."""
-        mapped = {}
-        for target_param, source_ref in self._mapping.items():
-            # source_ref format: "dataset.<column_name>"
-            column = source_ref.split(".", 1)[1] if "." in source_ref else source_ref
-            if column in dataset_row:
-                mapped[target_param] = dataset_row[column]
-        return mapped`, 'python', { filePath: '_engine/target_mapping.py', title: 'TargetInputMapper Implementation' })}
+    For each mapping entry with a 'dataset.X' source, the dataset field X
+    is copied into the result under the mapping key. Unmapped fields are
+    passed through unchanged.
+    """
+    if not mapping:
+        return record
+
+    input_mapping = {
+        param: source_field.split(".", 1)[1]
+        for param, source_field in mapping.items()
+        if source_field.startswith("dataset.")
+    }
+    if not input_mapping:
+        return record
+
+    mapped: Dict[str, Any] = {}
+    for param, dataset_field in input_mapping.items():
+        if dataset_field not in record:
+            raise KeyError(
+                f"Target input mapping: field '{dataset_field}' not found in dataset record. "
+                f"Available fields: {list(record.keys())}"
+            )
+        mapped[param] = record[dataset_field]
+
+    # Pass through unmapped fields so targets that read extra columns still work
+    for key, value in record.items():
+        if key not in mapped:
+            mapped[key] = value
+
+    return mapped`, 'python', { filePath: '_engine/targets/target_mapping.py', title: '_apply_target_input_mapping Implementation' })}
 
     ${createSequenceDiagram('Target Invocation with Input Mapping', [
       { id: 'runner', label: 'ExperimentRunner', type: 'engine' },
@@ -426,77 +445,91 @@ class TargetInputMapper:
 
     ${createCodeBlock(`# decorators.py -- Global registries and decorator definitions
 
-_EVALUATOR_REGISTRY: Dict[str, Type] = {}
-_TARGET_REGISTRY: Dict[str, Type] = {}
-_DATASET_REGISTRY: Dict[str, Type] = {}
+EVALUATOR_REGISTRY: Dict[str, type] = {}
+TARGET_REGISTRY: Dict[str, type] = {}
+DATASET_REGISTRY: Dict[str, type] = {}
 
-def evaluator(cls=None, *, name=None):
-    """Register a class as a custom evaluator."""
-    def wrapper(cls):
-        key = name or cls.__name__
-        _EVALUATOR_REGISTRY[key] = cls
-        return cls
-    return wrapper(cls) if cls else wrapper
+def evaluator(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
+    """Register a class as a custom evaluator.
+    Wraps the class in an EvaluatorWrapper(BaseEvaluator) and stores it."""
+    def decorator(cls):
+        evaluator_name = name if name is not None else cls.__name__
+        # Creates EvaluatorWrapper that delegates compute/aggregate to inner cls
+        EVALUATOR_REGISTRY[evaluator_name] = EvaluatorWrapper
+        return EvaluatorWrapper
+    return decorator
 
-def target(cls=None, *, name=None):
-    """Register a class as a custom target."""
-    def wrapper(cls):
-        key = name or cls.__name__
-        _TARGET_REGISTRY[key] = cls
-        return cls
-    return wrapper(cls) if cls else wrapper
+def target(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
+    """Register a class as a custom target.
+    Wraps the class in a TargetWrapper(BaseTarget) and stores it."""
+    def decorator(cls):
+        target_name = name if name is not None else cls.__name__
+        # Creates TargetWrapper that delegates infer() to inner cls
+        TARGET_REGISTRY[target_name] = TargetWrapper
+        return TargetWrapper
+    return decorator
 
-def dataset(cls=None, *, name=None):
-    """Register a class as a custom dataset."""
-    def wrapper(cls):
-        key = name or cls.__name__
-        _DATASET_REGISTRY[key] = cls
-        return cls
-    return wrapper(cls) if cls else wrapper`, 'python', { filePath: '_engine/decorators.py', title: 'Decorator Definitions', highlightLines: [3, 4, 5, 8, 15, 22] })}
+def dataset(name: Optional[str] = None) -> Callable[[type[T]], type["BaseDataset"]]:
+    """Register a class as a custom dataset.
+    Wraps the class in a DatasetWrapper(BaseDataset) and stores it."""
+    def decorator(cls):
+        dataset_name = name if name is not None else cls.__name__
+        DATASET_REGISTRY[dataset_name] = DatasetWrapper
+        return DatasetWrapper
+    return decorator`, 'python', { filePath: '_engine/decorators.py', title: 'Decorator Definitions', highlightLines: [3, 4, 5, 7, 18, 29] })}
 
     ${createTable(
       ['Decorator', 'Registry', 'Use Case'],
       [
-        ['<code>@evaluator(name="...")</code>', '<code>_EVALUATOR_REGISTRY</code>', 'Custom scoring logic (per-row compute + aggregate)'],
-        ['<code>@target(name="...")</code>', '<code>_TARGET_REGISTRY</code>', 'Custom inference endpoints (models, agents, APIs)'],
-        ['<code>@dataset(name="...")</code>', '<code>_DATASET_REGISTRY</code>', 'Custom data loading (databases, APIs, transforms)'],
+        ['<code>@evaluator(name="...")</code>', '<code>EVALUATOR_REGISTRY</code>', 'Custom scoring logic (per-row compute + aggregate)'],
+        ['<code>@target(name="...")</code>', '<code>TARGET_REGISTRY</code>', 'Custom inference endpoints (models, agents, APIs)'],
+        ['<code>@dataset(name="...")</code>', '<code>DATASET_REGISTRY</code>', 'Custom data loading (databases, APIs, transforms)'],
       ]
     )}
 
     ${createInfoCard('Name Resolution', 'If the <code>name</code> parameter is omitted, the class name is used as the registry key. For example, <code>@evaluator</code> on <code>class WordCount</code> registers as <code>"WordCount"</code>. Use explicit names for stable references in YAML configs.', 'tip')}
 
     <h3 id="discovery-system">Discovery System</h3>
-    <p>The <code>discover_components()</code> function uses AST parsing to find decorated classes without importing all project files blindly. Only files that match are imported to trigger registration.</p>
+    <p>The <code>discover_components()</code> function uses AST parsing to find decorated classes without importing all project files blindly. Only files that match are imported to trigger registration. A separate <code>discover_project_components()</code> in the CLI utils queries the populated registries.</p>
 
-    ${createCodeBlock(`def discover_components(search_path: str) -> Dict[str, List[str]]:
+    ${createCodeBlock(`def discover_components(force: bool = False) -> None:
+    """Discover and import all @evaluator, @target, @dataset decorated components.
+
+    Scans the current working directory for Python modules containing these
+    decorators and imports them to populate the registries.
+
+    Args:
+        force: If True, forces discovery even if directory was already scanned.
     """
-    AST-scans Python files in search_path for
-    @evaluator, @target, @dataset decorators.
-    Imports matching modules to trigger registration.
+    base_dir = Path.cwd()
+    if not force and base_dir in _DISCOVERED_DIRECTORIES:
+        return
 
-    Returns: {"evaluators": [...], "targets": [...], "datasets": [...]}
-    """
-    known_decorators = {"evaluator", "target", "dataset"}
-    results = {"evaluators": [], "targets": [], "datasets": []}
+    _discover_in_directory(base_dir)
+    _DISCOVERED_DIRECTORIES.add(base_dir)
 
-    for py_file in walk_python_files(search_path):
-        # Step 1: Parse AST without importing
-        tree = ast.parse(py_file.read_text())
 
-        # Step 2: Look for ClassDef nodes with known decorators
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
-            for decorator in node.decorator_list:
-                dec_name = get_decorator_name(decorator)
-                if dec_name in known_decorators:
-                    # Step 3: Import the module to trigger @decorator
-                    module = importlib.import_module(path_to_module(py_file))
-                    # Registration happens automatically via the decorator
-                    results[dec_name + "s"].append(get_registered_name(decorator, node))
-                    break
+def _discover_in_directory(directory: Path) -> None:
+    """Recursively discover Python modules with evee decorators."""
+    exclude_dirs = {
+        ".venv", "venv", "env", ".env", "__pycache__", ".pytest_cache",
+        ".git", "node_modules", ".tox", ".mypy_cache", "build", "dist",
+        ".eggs", "output", "logs", "samples", "tests", "experiment",
+    }
+    target_decorators = {"target", "evaluator", "dataset"}
 
-    return results`, 'python', { filePath: '_engine/discovery.py', title: 'Component Discovery', highlightLines: [14, 18, 25] })}
+    for py_file in python_files:
+        # Phase 1: Fast text search for @decorator syntax
+        if not _contains_decorator_syntax(content, target_decorators):
+            continue
+        # Phase 2: Parse AST and validate decorator is on a ClassDef
+        tree = ast.parse(content, filename=str(file_path))
+        if not _has_decorator_on_class(tree, target_decorators):
+            continue
+        # Phase 3: Import module — triggers decorator registration
+        spec = importlib.util.spec_from_file_location(module_path, str(file_path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)`, 'python', { filePath: '_engine/discovery.py', title: 'Component Discovery', highlightLines: [1, 12, 30, 33, 38] })}
 
     ${createCallTrace('Discovery Pipeline', [
       { module: 'discovery', func: 'discover_components(search_path)', file: '_engine/discovery.py', tag: 'engine',
@@ -516,28 +549,35 @@ def dataset(cls=None, *, name=None):
     <h3 id="custom-evaluators">Writing Custom Evaluators</h3>
     <p>Extend <code>BaseEvaluator</code> and implement <code>compute()</code> for per-row scoring. Optionally override <code>aggregate()</code> for summary statistics.</p>
 
-    ${createCodeBlock(`class BaseEvaluator:
-    def compute(self, **kwargs) -> Dict[str, Any]:
-        """Score a single row. Must return a dict of metric values."""
-        raise NotImplementedError
+    ${createCodeBlock(`class BaseEvaluator(ABC):
+    """Base class for all evaluators."""
 
-    def aggregate(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Summarize across all rows. Default: mean of numeric values."""
-        numeric_keys = [k for k in results[0] if isinstance(results[0][k], (int, float))]
-        return {
-            k: sum(r[k] for r in results) / len(results)
-            for k in numeric_keys
-        }`, 'python', { filePath: '_engine/base_evaluator.py', title: 'BaseEvaluator Contract' })}
+    def __init__(self, config=None, context=None):
+        config = config or {}
+        self.name = config.get("name", self.__class__.__name__)
+        self.display_name = config.get("display_name") or self.name
+        self.context = context
+        self.mapping = config.get("mapping", {})
+
+    @abstractmethod
+    def compute(self, **kwargs: Any) -> Dict[str, Any]:
+        """Calculate metric for a single record. Must return a dict of metric values."""
+        ...
+
+    @abstractmethod
+    def aggregate(self, scores: List[Dict[str, Any]]) -> Dict[str, Number]:
+        """Aggregate scores across multiple records."""
+        ...`, 'python', { filePath: '_engine/decorators.py', title: 'BaseEvaluator Contract' })}
 
     ${createTabs([
       {
         label: 'Word Count (Simple)',
-        content: `<p>A minimal evaluator that counts words in the model response.</p>
-          ${createCodeBlock(`from azure.ai.evaluation._engine.decorators import evaluator, BaseEvaluator
+        content: `<p>A minimal evaluator that counts words in the model response. Note: you do NOT extend BaseEvaluator directly — the <code>@evaluator</code> decorator wraps your class automatically.</p>
+          ${createCodeBlock(`from azure.ai.evaluation._engine.decorators import evaluator
 from typing import Dict, Any, List
 
 @evaluator(name="word_count")
-class WordCountEvaluator(BaseEvaluator):
+class WordCountEvaluator:
     """Counts words in the model response."""
 
     def compute(self, response: str = "", **kwargs) -> Dict[str, Any]:
@@ -558,11 +598,11 @@ class WordCountEvaluator(BaseEvaluator):
         label: 'JSON Validity (Moderate)',
         content: `<p>Checks if a model response is valid JSON. Returns a boolean metric and optional parse error details.</p>
           ${createCodeBlock(`import json
-from azure.ai.evaluation._engine.decorators import evaluator, BaseEvaluator
+from azure.ai.evaluation._engine.decorators import evaluator
 from typing import Dict, Any, List
 
 @evaluator(name="json_validity")
-class JsonValidityEvaluator(BaseEvaluator):
+class JsonValidityEvaluator:
     """Validates that the response is parseable JSON."""
 
     def compute(self, response: str = "", **kwargs) -> Dict[str, Any]:
@@ -583,7 +623,7 @@ class JsonValidityEvaluator(BaseEvaluator):
     ], 'custom-evaluator-examples')}
 
     <h3 id="custom-targets">Writing Custom Targets</h3>
-    <p>Custom targets wrap your inference endpoint. Use <code>@target</code> and implement <code>__call__</code> to handle a single query.</p>
+    <p>Custom targets wrap your inference endpoint. Use <code>@target</code> and implement <code>infer()</code> to handle a single query. The method receives a <code>Dict[str, Any]</code> input and should return a <code>Dict[str, Any]</code> output.</p>
 
     ${createCodeBlock(`from azure.ai.evaluation._engine.decorators import target
 from typing import Dict, Any
@@ -596,8 +636,9 @@ class MyAgentTarget:
         self.endpoint = endpoint
         self.api_key = api_key
 
-    def __call__(self, query: str, **kwargs) -> str:
+    def infer(self, input: Dict[str, Any]) -> Dict[str, Any]:
         import requests
+        query = input.get("query", "")
         response = requests.post(
             self.endpoint,
             json={"query": query},
@@ -605,9 +646,9 @@ class MyAgentTarget:
             timeout=30,
         )
         response.raise_for_status()
-        return response.json()["answer"]`, 'python', { filePath: 'targets/my_agent.py', title: 'Custom Target Example', highlightLines: [4, 8, 12] })}
+        return {"response": response.json()["answer"]}`, 'python', { filePath: 'targets/my_agent.py', title: 'Custom Target Example', highlightLines: [4, 8, 13] })}
 
-    ${createInfoCard('Target Return Types', 'A custom target can return either a plain <code>str</code> (the response text) or a <code>dict</code> with keys like <code>response</code>, <code>output_items</code>, and <code>tool_definitions</code>. The dict form is required for agent evaluators that inspect tool calls.', 'info')}
+    ${createInfoCard('Target Return Types', 'The <code>infer()</code> method receives a <code>Dict[str, Any]</code> input and should return a <code>Dict[str, Any]</code> with keys like <code>response</code>, <code>output_items</code>, and <code>tool_definitions</code>. The TargetWrapper created by <code>@target</code> delegates to your class infer() method. Async targets using <code>async def infer()</code> are also supported.', 'info')}
 
     <p>The corresponding YAML config references the target by its registered name:</p>
     ${createCodeBlock(`# config.yaml
@@ -660,8 +701,8 @@ class SqlDataset:
         detail: 'AST scans all .py files in the project. Finds decorated classes without executing arbitrary code.' },
       { module: 'Import', func: 'importlib.import_module()', file: '_engine/discovery.py', tag: 'engine',
         detail: 'Only files with matching decorators are imported. Import triggers the decorator, registering the class.' },
-      { module: 'Registry', func: '_EVALUATOR_REGISTRY[name] = cls', file: '_engine/decorators.py', tag: 'data',
-        detail: 'Class is stored in the global registry dict, keyed by the name parameter or class name.' },
+      { module: 'Registry', func: 'EVALUATOR_REGISTRY[name] = cls', file: '_engine/decorators.py', tag: 'data',
+        detail: 'Class is wrapped and stored in the global registry dict, keyed by the name parameter or class name.' },
       { module: 'Factory', func: 'TargetFactory / EvaluatorFactory', file: '_engine/*_factory.py', tag: 'engine',
         detail: 'Factories read YAML config, look up names in the registry, and instantiate with provided args.' },
       { module: 'Runner', func: 'ExperimentRunner.run()', file: '_engine/runner.py', tag: 'engine',
@@ -684,7 +725,7 @@ class SqlDataset:
     ], { width: 700, height: 380 })}
 
     ${createInfoCard('Excluded Directories',
-      'Discovery skips these directories: <code>.venv/</code>, <code>venv/</code>, <code>__pycache__/</code>, <code>.git/</code>, <code>node_modules/</code>, <code>.tox/</code>, <code>*.egg-info/</code>. Only <code>.py</code> files in the project root and subdirectories are scanned.',
+      'Discovery skips these directories: <code>.venv/</code>, <code>venv/</code>, <code>env/</code>, <code>.env/</code>, <code>__pycache__/</code>, <code>.pytest_cache/</code>, <code>.git/</code>, <code>node_modules/</code>, <code>.tox/</code>, <code>.mypy_cache/</code>, <code>build/</code>, <code>dist/</code>, <code>.eggs/</code>, <code>output/</code>, <code>logs/</code>, <code>samples/</code>, <code>tests/</code>, <code>experiment/</code>. Only non-private <code>.py</code> files are scanned.',
     'info')}
   `;
 }
