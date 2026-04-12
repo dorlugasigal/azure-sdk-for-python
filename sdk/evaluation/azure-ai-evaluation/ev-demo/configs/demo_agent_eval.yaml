@@ -38,6 +38,8 @@ experiment:
         query: "dataset.query"
         response: "target.output_items"
         tool_definitions: "target.tool_definitions"
+        tool_calls: "target.tool_calls"
     - name: "response_completeness"
       mapping:
         response: "target.response"
+        tool_calls: "target.tool_calls"

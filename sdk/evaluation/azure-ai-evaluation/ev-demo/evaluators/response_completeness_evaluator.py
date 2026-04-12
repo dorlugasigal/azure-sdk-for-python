@@ -5,6 +5,7 @@ Foundry cloud (sandbox-compatible: only built-in Python + sandbox packages).
 """
 import json
 import re
+from typing import Any
 
 from azure.ai.evaluation._engine.decorators import evaluator, BaseEvaluator
 
@@ -40,6 +41,15 @@ def _extract_from_items(items):
             continue
 
         item_type = item.get("type", "")
+
+        # Direct type-based detection (Foundry output format)
+        if item_type in ("function_call", "mcp_call", "tool_call"):
+            tool_calls += 1
+            continue
+        if item_type in ("function_call_output", "mcp_call_output", "tool_result"):
+            continue
+
+        # Message/text items — extract text content
         if item_type in ("message", "text"):
             content = item.get("text", "") or item.get("content", "")
             if isinstance(content, list):
@@ -50,16 +60,27 @@ def _extract_from_items(items):
                         text_parts.append(str(part))
             elif content:
                 text_parts.append(str(content))
-        elif item_type == "function_call":
-            tool_calls += 1
-        elif item_type == "function_call_output":
-            pass  # Tool result — don't count as user-facing text
-        else:
-            for key in ("text", "content", "output"):
-                val = item.get(key)
-                if val and isinstance(val, str):
-                    text_parts.append(val)
-                    break
+            continue
+
+        # Conversation format — scan content parts for tool calls and text
+        content = item.get("content")
+        if isinstance(content, list):
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                part_type = part.get("type", "")
+                if part_type in ("tool_call", "function_call", "mcp_call", "mcp_list_tools"):
+                    tool_calls += 1
+                elif part_type == "text":
+                    text_parts.append(part.get("text", ""))
+            continue
+
+        # Fallback — try known text keys
+        for key in ("text", "content", "output"):
+            val = item.get(key)
+            if val and isinstance(val, str):
+                text_parts.append(val)
+                break
 
     return " ".join(text_parts), tool_calls, True
 
@@ -106,15 +127,21 @@ class ResponseCompletenessMetric(BaseEvaluator):
     (model.output_items). Sandbox-compatible for Foundry cloud evaluation.
     """
 
-    def compute(self, response: str = "", query: str = "", **kwargs):
+    def compute(self, response: str = "", query: str = "", tool_calls: Any = None, **kwargs):
         """Evaluate response completeness.
 
         Args:
-            response: Agent's text response (model.response) or structured
-                output (model.output_items as JSON string).
-            query: The original user query (dataset.query).
+            response: Agent's text response.
+            query: The original user query.
+            tool_calls: List of tool calls made by the agent.
         """
-        text, tool_calls, has_structured = _parse_response(response)
+        text, parsed_tool_calls, has_structured = _parse_response(response)
+        # Use explicit tool_calls count when provided, fall back to parsed count
+        if isinstance(tool_calls, list):
+            tool_call_count = len(tool_calls)
+            has_structured = True
+        else:
+            tool_call_count = parsed_tool_calls
 
         scores = {}
 
@@ -147,7 +174,7 @@ class ResponseCompletenessMetric(BaseEvaluator):
             scores["coverage"] = 1.0
 
         # 4. Synthesis — if tools were used, was there a final text synthesis?
-        if has_structured and tool_calls > 0:
+        if has_structured and tool_call_count > 0:
             if text_length > 50:
                 scores["synthesis"] = 1.0
             elif text_length > 20:
@@ -171,7 +198,7 @@ class ResponseCompletenessMetric(BaseEvaluator):
             "completeness_directness": scores["directness"],
             "completeness_coverage": scores["coverage"],
             "completeness_synthesis": scores["synthesis"],
-            "completeness_tool_calls": tool_calls,
+            "completeness_tool_calls": tool_call_count,
             "completeness_response_length": text_length,
         }
 

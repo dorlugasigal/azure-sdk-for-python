@@ -308,7 +308,7 @@ class EvaluationExecutor:
         """
         has_trace_data = (
             agent_trace is not None
-            and (agent_trace.llm_calls or agent_trace.log_events)
+            and (agent_trace.spans or agent_trace.llm_calls or agent_trace.log_events)
         )
         if not has_trace_data:
             return
@@ -356,6 +356,7 @@ class EvaluationExecutor:
                 # Foundry MCP format
                 if item_type == "mcp_call":
                     tool_calls.append({
+                        "type": "tool_call",
                         "name": item.get("name", ""),
                         "arguments": item.get("arguments", {}),
                         "output": item.get("output", ""),
@@ -374,6 +375,7 @@ class EvaluationExecutor:
                                 except (json.JSONDecodeError, ValueError):
                                     pass
                             tool_calls.append({
+                                "type": "tool_call",
                                 "name": entry.get("name", ""),
                                 "arguments": args,
                             })

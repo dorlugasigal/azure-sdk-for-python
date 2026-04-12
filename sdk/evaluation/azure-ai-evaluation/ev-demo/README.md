@@ -6,7 +6,7 @@ Demonstrations of the `ev` evaluation CLI for assessing AI models and agents.
 
 ```bash
 # Install dependencies
-uv pip install -e "."
+uv sync
 
 # Run the quickstart evaluation (no Azure required)
 ev run
