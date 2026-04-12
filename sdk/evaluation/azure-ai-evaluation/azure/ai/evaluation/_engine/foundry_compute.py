@@ -10,7 +10,7 @@ import json
 import logging
 import textwrap
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .models.config import Config
 
@@ -220,13 +220,14 @@ def _build_testing_criteria(
 
         elif project_client:
             # Unknown evaluator — try to upload as custom code-based evaluator
-            criteria_entry = _upload_custom_metric(
+            criteria_entry, upload_error = _upload_custom_metric(
                 evaluator_config, project_client, deployment_name
             )
             if criteria_entry is None:
+                detail = f" Reason: {upload_error}" if upload_error else ""
                 raise ValueError(
                     f"Evaluator '{evaluator_config.name}' is not a built-in evaluator and "
-                    f"could not be uploaded as a custom evaluator. "
+                    f"could not be uploaded as a custom evaluator.{detail} "
                     f"To run remotely, use only built-in evaluators: "
                     f"{', '.join(sorted(EVALUATOR_TO_BUILTIN.keys()))}. "
                     f"Or run locally with: ev run"
@@ -415,12 +416,16 @@ def _upload_custom_metric(
     evaluator_config: Any,
     project_client: Any,
     deployment_name: Optional[str],
-) -> Optional[Dict[str, Any]]:
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """Upload a custom ``@metric`` as a code-based evaluator to Foundry catalog.
 
     Synthesises a ``grade(sample, item)`` function from the evaluator's
     ``compute()`` method and registers it via
     ``project_client.beta.evaluators.create_version()``.
+
+    Returns a (criteria_entry, error_reason) tuple.  On success *error_reason*
+    is ``None``; on failure *criteria_entry* is ``None`` and *error_reason*
+    describes what went wrong.
     """
     from .decorators import EVALUATOR_REGISTRY
 
@@ -429,17 +434,19 @@ def _upload_custom_metric(
     evaluator_name = evaluator_config.name
     wrapper_cls = EVALUATOR_REGISTRY.get(evaluator_name)
     if not wrapper_cls:
-        return None
+        return None, f"Evaluator '{evaluator_name}' was not found in the evaluator registry."
 
     inner_cls = _extract_inner_class(wrapper_cls)
     if inner_cls is None:
-        logger.warning("Could not extract inner class for evaluator '%s'.", evaluator_name)
-        return None
+        reason = f"Could not extract inner class for evaluator '{evaluator_name}'."
+        logger.warning(reason)
+        return None, reason
 
     compute_source = _get_compute_source(inner_cls)
     if compute_source is None:
-        logger.warning("Could not retrieve compute() source for evaluator '%s'.", evaluator_name)
-        return None
+        reason = f"Could not retrieve compute() source for evaluator '{evaluator_name}'."
+        logger.warning(reason)
+        return None, reason
 
     mapping = evaluator_config.mapping or {}
     full_code = _build_grade_code(evaluator_name, compute_source, mapping)
@@ -493,8 +500,9 @@ def _upload_custom_metric(
             },
         )
     except Exception as exc:  # pylint: disable=broad-except
+        reason = f"Upload failed: {exc}"
         logger.warning("Failed to upload custom evaluator '%s': %s", evaluator_name, exc)
-        return None
+        return None, reason
 
     effective_deployment = evaluator_config.deployment_name or deployment_name or "gpt-4.1-mini"
     criteria_entry: Dict[str, Any] = {
@@ -514,9 +522,7 @@ def _upload_custom_metric(
             data_mapping[param] = "{{item." + field + "}}"
         criteria_entry["data_mapping"] = data_mapping
 
-    return criteria_entry
-
-
+    return criteria_entry, None
 def _build_data_source_config(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Build an eval data source config with schema inferred from the first record."""
     properties = {key: {"type": "string"} for key in records[0]}

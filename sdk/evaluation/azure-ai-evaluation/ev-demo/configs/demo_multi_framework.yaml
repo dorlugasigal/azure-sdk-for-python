@@ -5,6 +5,7 @@ experiment:
 
   cloud:
     foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    foundry_project: "${AZURE_AI_PROJECT}"
     default_evaluator_deployment: "gpt-4.1-mini"
 
   targets:
