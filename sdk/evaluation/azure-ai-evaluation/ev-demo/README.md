@@ -216,7 +216,7 @@ Access in your evaluator via `ExecutionContext`:
 class MyEvaluator(BaseEvaluator):
     def __init__(self, config=None, context=None):
         super().__init__(context)
-        conn = self.get_connection(context.connections_registry, "my_service")
+        conn = context.connections_registry["my_service"]
         self.endpoint = conn["endpoint"]
 ```
 

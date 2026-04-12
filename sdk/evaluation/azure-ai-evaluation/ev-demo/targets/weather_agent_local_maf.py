@@ -16,6 +16,7 @@ from typing import Annotated, Any, Dict
 from pydantic import Field
 
 from azure.ai.evaluation._engine.decorators import target, BaseTarget
+from azure.ai.evaluation._engine.models import ExecutionContext
 
 
 # --- Persistent event loop on a background thread ---
@@ -70,10 +71,10 @@ class WeatherAgentLocalTarget(BaseTarget):
     4. Agent synthesizes final text answer
     """
 
-    def __init__(self, connections_registry: Dict[str, Any] = None, connection_name: str = "default", **kwargs: Any) -> None:
+    def __init__(self, context: ExecutionContext = None, connection_name: str = "default", **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-        conn = self.get_connection(connections_registry, connection_name)
+        conn = context.connections_registry[connection_name]
         project_endpoint = conn.get("azure_ai_project")
         if not project_endpoint:
             raise ValueError(

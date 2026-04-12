@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure AI Evaluation Engine — Interactive Learning Guide</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    .code-content, .code-content code, .inline-code, .trace-caller, .cli-option .opt-flag,
+    .schema-key, .schema-type, .schema-default, .metric-io code, .data-table code {
+      font-family: 'Fira Code', 'SF Mono', monospace;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Mobile toggle -->
+<button class="mobile-toggle" aria-label="Toggle sidebar">☰</button>
+<div class="overlay"></div>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-logo">
+      <div class="logo-icon">EV</div>
+      <h1>Evaluation Engine<small>Interactive Learning Guide</small></h1>
+    </div>
+    <div class="search-box">
+      <span class="search-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </span>
+      <input type="text" id="nav-search" placeholder="Search sections..." autocomplete="off">
+      <span class="search-shortcut">⌘K</span>
+    </div>
+  </div>
+
+  <div class="sidebar-nav">
+    <!-- Architecture -->
+    <div class="nav-group">
+      <div class="nav-group-header">
+        <span>Architecture</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="nav-items">
+        <a class="nav-item active" data-section="architecture">Architecture Overview</a>
+      </div>
+    </div>
+
+    <!-- Engine Flow -->
+    <div class="nav-group">
+      <div class="nav-group-header">
+        <span>Engine Flow</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="nav-items">
+        <a class="nav-item" data-section="engine-flow">End-to-End Pipeline</a>
+      </div>
+    </div>
+
+    <!-- Evaluators -->
+    <div class="nav-group">
+      <div class="nav-group-header">
+        <span>Evaluators</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="nav-items">
+        <a class="nav-item" data-section="evaluators">
+          Evaluator Catalog
+          <span class="nav-badge">32+</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Configuration -->
+    <div class="nav-group">
+      <div class="nav-group-header">
+        <span>Configuration</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="nav-items">
+        <a class="nav-item" data-section="configuration">Config Reference</a>
+      </div>
+    </div>
+
+    <!-- CLI -->
+    <div class="nav-group">
+      <div class="nav-group-header">
+        <span>CLI Commands</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="nav-items">
+        <a class="nav-item" data-section="cli">
+          Command Reference
+          <span class="nav-badge">10</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Targets -->
+    <div class="nav-group">
+      <div class="nav-group-header">
+        <span>Targets</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="nav-items">
+        <a class="nav-item" data-section="targets">Target System</a>
+      </div>
+    </div>
+
+    <!-- Custom Components -->
+    <div class="nav-group">
+      <div class="nav-group-header">
+        <span>Extensibility</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="nav-items">
+        <a class="nav-item" data-section="custom">Custom Components</a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- Main Content -->
+<main class="main-content">
+  <div class="content-header">
+    <div class="breadcrumb">
+      <a href="#" onclick="navigateTo('architecture');return false;">Home</a>
+      <span class="sep">›</span>
+      <span id="breadcrumb-current">Architecture Overview</span>
+    </div>
+  </div>
+
+  <div class="content-body">
+    <section id="architecture" class="section active">
+      <h2 class="section-title">Architecture Overview</h2>
+      <p class="section-subtitle loading">Loading architecture content...</p>
+    </section>
+
+    <section id="engine-flow" class="section">
+      <h2 class="section-title">Engine Flow</h2>
+      <p class="section-subtitle loading">Loading engine flow content...</p>
+    </section>
+
+    <section id="evaluators" class="section">
+      <h2 class="section-title">Evaluator Catalog</h2>
+      <p class="section-subtitle loading">Loading evaluators content...</p>
+    </section>
+
+    <section id="configuration" class="section">
+      <h2 class="section-title">Configuration Reference</h2>
+      <p class="section-subtitle loading">Loading configuration content...</p>
+    </section>
+
+    <section id="cli" class="section">
+      <h2 class="section-title">CLI Commands</h2>
+      <p class="section-subtitle loading">Loading CLI content...</p>
+    </section>
+
+    <section id="targets" class="section">
+      <h2 class="section-title">Target System</h2>
+      <p class="section-subtitle loading">Loading targets content...</p>
+    </section>
+
+    <section id="custom" class="section">
+      <h2 class="section-title">Custom Components</h2>
+      <p class="section-subtitle loading">Loading custom components content...</p>
+    </section>
+  </div>
+</main>
+
+<!-- Back to top -->
+<button class="back-to-top" aria-label="Back to top">↑</button>
+
+<!-- Scripts: core first, then content modules -->
+<script src="app.js"></script>
+<script src="content-arch-engine.js"></script>
+<script src="content-eval-config.js"></script>
+<script src="content-cli-targets.js"></script>
+
+</body>
+</html>

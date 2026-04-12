@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from azure.ai.evaluation._engine.decorators import target, BaseTarget
+from azure.ai.evaluation._engine.models import ExecutionContext
 
 
 # Tool implementations
@@ -42,10 +43,10 @@ class WeatherAgentLangChainTarget(BaseTarget):
     OTel captures all LLM calls via the OpenAI instrumentor.
     """
 
-    def __init__(self, connections_registry: Dict[str, Any] = None, connection_name: str = "default", **kwargs: Any) -> None:
+    def __init__(self, context: ExecutionContext = None, connection_name: str = "default", **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-        conn = self.get_connection(connections_registry, connection_name)
+        conn = context.connections_registry[connection_name]
         azure_endpoint = conn.get("azure_endpoint")
         if not azure_endpoint:
             raise ValueError(

@@ -236,13 +236,13 @@ class TestEvaluatorDecorator:
         ):
             BadMappingEval(config, mock_context)
 
-    def test_injects_connections_registry(
+    def test_connections_via_context(
         self,
         mock_context,
         mock_connections_registry,
         evaluator_inference_output,
     ):
-        """connections_registry is injected when the inner class requests it."""
+        """connections_registry is accessible through context, not injected directly."""
         # given
         config = {
             "name": "conn_eval",
@@ -254,13 +254,13 @@ class TestEvaluatorDecorator:
 
         @evaluator(name="eval_conn_test")
         class ConnEval:
-            def __init__(self, connections_registry: dict):
-                self.connections_registry = connections_registry
+            def __init__(self, context):
+                self.context = context
 
             def compute(self, response, ground_truth, **kwargs) -> dict:
                 return {
-                    "count": len(self.connections_registry),
-                    "names": list(self.connections_registry.keys()),
+                    "count": len(self.context.connections_registry),
+                    "names": list(self.context.connections_registry.keys()),
                 }
 
             def aggregate(self, scores):
@@ -428,18 +428,18 @@ class TestTargetDecorator:
         ):
             ParamTarget(config, mock_context)
 
-    def test_injects_connections_registry(
+    def test_connections_via_context(
         self, mock_context, mock_connections_registry
     ):
-        """connections_registry is injected when inner class requests it."""
+        """connections_registry is accessible through context, not injected directly."""
         # given
         @target(name="target_conn_test")
         class ConnTarget:
-            def __init__(self, connections_registry: dict):
-                self.connections_registry = connections_registry
+            def __init__(self, context):
+                self.context = context
 
             def infer(self, input: dict) -> dict:
-                return {"connections": list(self.connections_registry.keys())}
+                return {"connections": list(self.context.connections_registry.keys())}
 
         # when
         instance = ConnTarget({}, mock_context)
@@ -882,15 +882,15 @@ class TestDatasetDecorator:
         assert instance.inner.optional_param == "default_value"
         assert len(instance) == 1
 
-    def test_with_connections_registry(self, mock_context, mock_connections_registry):
-        """connections_registry is injected when inner class requests it."""
+    def test_connections_via_context(self, mock_context, mock_connections_registry):
+        """connections_registry is accessible through context, not injected directly."""
         # given
         @dataset(name="ds_conn_test")
         class ConnDataset:
-            def __init__(self, data_path: str, connections_registry: dict):
+            def __init__(self, data_path: str, context):
                 self.data_path = data_path
-                self.connections_registry = connections_registry
-                self.data = [{"connection": list(connections_registry.keys())}]
+                self.context = context
+                self.data = [{"connection": list(context.connections_registry.keys())}]
 
             def __iter__(self):
                 return iter(self.data)
@@ -904,7 +904,7 @@ class TestDatasetDecorator:
         instance = ConnDataset(config, mock_context)
 
         # then
-        assert instance.inner.connections_registry == mock_connections_registry
+        assert instance.inner.context.connections_registry == mock_connections_registry
         assert len(instance) == 1
 
     def test_multiple_iterations(self, mock_context):

@@ -89,26 +89,6 @@ class BaseTarget(ABC):
         """Async interface for cleanup."""
         pass
 
-    @staticmethod
-    def get_connection(connections_registry: Optional[Dict[str, Any]], connection_name: str = "default") -> Dict[str, Any]:
-        """Resolve a connection by name from the registry.
-
-        :param connections_registry: The connections registry injected by the engine.
-        :param connection_name: Name of the connection to look up.
-        :returns: Connection dict with keys like azure_endpoint, azure_deployment, azure_ai_project.
-        :raises ValueError: If the connection is not found.
-        """
-        if not connections_registry or connection_name not in connections_registry:
-            raise ValueError(
-                f"Connection '{connection_name}' not found. "
-                f"Available: {list((connections_registry or {}).keys())}. "
-                f"Define it in the 'connections' section of your YAML config."
-            )
-        conn = connections_registry[connection_name]
-        if hasattr(conn, "model_dump"):
-            return conn.model_dump()
-        return dict(conn) if conn else {}
-
 
 class BaseDataset(ABC):
     """Base class for all datasets."""
@@ -164,9 +144,7 @@ def evaluator(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
                 for param_name_inner, param in cls_sig.parameters.items():
                     if param_name_inner == "self":
                         continue
-                    if param_name_inner == "connections_registry":
-                        init_params[param_name_inner] = self.context.connections_registry if self.context else {}
-                    elif param_name_inner == "context":
+                    if param_name_inner == "context":
                         init_params[param_name_inner] = self.context
                     elif param_name_inner == "cloud_config":
                         init_params[param_name_inner] = cloud
@@ -235,8 +213,6 @@ def target(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
                     raise ValueError(f"Missing required parameters for target '{cls.__name__}': {', '.join(missing)}")
 
                 init_params = _get_params_from_config(cls_sig, config)
-                if "connections_registry" in cls_sig.parameters:
-                    init_params["connections_registry"] = self.context.connections_registry if self.context else {}
                 if "context" in cls_sig.parameters:
                     init_params["context"] = self.context
 
@@ -316,8 +292,6 @@ def dataset(name: Optional[str] = None) -> Callable[[type[T]], type["BaseDataset
                     )
 
                 init_params = _get_params_from_config(sig, config)
-                if "connections_registry" in sig.parameters:
-                    init_params["connections_registry"] = self.context.connections_registry if self.context else {}
                 if "context" in sig.parameters:
                     init_params["context"] = self.context
 

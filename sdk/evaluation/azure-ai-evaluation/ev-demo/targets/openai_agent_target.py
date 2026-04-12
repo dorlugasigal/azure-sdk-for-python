@@ -12,6 +12,7 @@ import json
 from typing import Any, Dict
 
 from azure.ai.evaluation._engine.decorators import target, BaseTarget
+from azure.ai.evaluation._engine.models import ExecutionContext
 
 
 # Tool implementations
@@ -60,10 +61,10 @@ class WeatherAgentOpenAITarget(BaseTarget):
     all LLM calls and tool invocations via OTel tracing.
     """
 
-    def __init__(self, connections_registry: Dict[str, Any] = None, connection_name: str = "default", **kwargs: Any) -> None:
+    def __init__(self, context: ExecutionContext = None, connection_name: str = "default", **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-        conn = self.get_connection(connections_registry, connection_name)
+        conn = context.connections_registry[connection_name]
         project_endpoint = conn.get("azure_ai_project")
         if not project_endpoint:
             raise ValueError(
