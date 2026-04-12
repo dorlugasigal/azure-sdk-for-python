@@ -4,7 +4,7 @@
    ============================================================ */
 
 // ── Navigation ──────────────────────────────────────────────
-const state = { currentSection: 'architecture', traceSteps: {} };
+const state = { currentSection: 'roadmap', traceSteps: {} };
 
 function initNavigation() {
   document.querySelectorAll('.nav-item').forEach(item => {
@@ -24,12 +24,20 @@ function initNavigation() {
   // Handle hash navigation
   const hash = location.hash.slice(1);
   if (hash) navigateTo(hash);
-  else navigateTo('architecture');
+  else navigateTo('roadmap');
 
   window.addEventListener('hashchange', () => {
     const h = location.hash.slice(1);
     if (h) navigateTo(h);
   });
+}
+
+/**
+ * Creates a "deep dive" link button that navigates to a section.
+ * Used inside BTS step descriptions to link to detailed explanations.
+ */
+function deepDiveLink(sectionId, label) {
+  return `<a class="deep-dive-link" onclick="navigateTo('${sectionId}');return false;" href="#${sectionId}">${label} →</a>`;
 }
 
 function navigateTo(sectionId) {
@@ -64,6 +72,11 @@ function navigateTo(sectionId) {
   // Close mobile sidebar
   document.querySelector('.sidebar')?.classList.remove('open');
   document.querySelector('.overlay')?.classList.remove('visible');
+
+  // Trigger terminal animations when navigating to interactive-cli
+  if (sectionId === 'interactive-cli') {
+    setTimeout(initTerminalAnimations, 100);
+  }
 }
 
 // ── Search ──────────────────────────────────────────────────
@@ -679,6 +692,391 @@ function renderConfigSchema(containerId, schema) {
   if (el) el.innerHTML = `<div class="schema-tree">${createConfigSchema(schema)}</div>`;
 }
 
+// ── Interactive Terminal Engine ──────────────────────────────
+
+/**
+ * Creates an interactive terminal experience for a CLI command.
+ * @param {Object} config
+ * @param {string} config.id - unique id for this terminal instance
+ * @param {string} config.command - the full command to "type"
+ * @param {string} config.output - terminal output after command runs (can be HTML)
+ * @param {Array}  config.steps - behind-the-scenes steps
+ * @param {string[]} [config.tips] - optional tips shown after
+ * @returns {string} HTML string
+ */
+function createInteractiveTerminal(config) {
+  const { id, command, output, steps = [], tips = [] } = config;
+  const typingSteps = command.length;
+  const typingDuration = (typingSteps * 0.05).toFixed(2);
+
+  let stepsHtml = '';
+  if (steps.length) {
+    const stepsInner = steps.map((s, i) => {
+      const tag = s.tag ? `<span class="bts-step-tag" data-tag="${s.tag}">${s.tag}</span>` : '';
+      const code = s.code ? createCodeBlock(s.code, s.lang || 'python', { title: s.file || '' }) : '';
+      const file = (!s.code && s.file) ? `<div class="bts-step-file">${escapeHtml(s.file)}</div>` : '';
+      const arrow = i < steps.length - 1 ? `<div class="bts-arrow" data-terminal="${id}">↓</div>` : '';
+      return `<div class="bts-step" data-terminal="${id}" data-step-index="${i}">
+        <div class="bts-step-num">${i + 1}</div>
+        <div class="bts-step-content">
+          <div class="bts-step-title">${escapeHtml(s.title)}</div>
+          <div class="bts-step-desc">${s.description}</div>
+          ${tag}${code}${file}
+        </div>
+      </div>${arrow}`;
+    }).join('');
+
+    stepsHtml = `<div class="bts-panel" data-terminal="${id}">
+      <div class="bts-header" data-terminal="${id}">
+        <div class="bts-header-left">
+          <span class="bts-header-icon">&gt;</span>
+          <span>Behind the Scenes</span>
+          <span style="color:var(--text-muted);font-weight:400;font-size:12px;">(${steps.length} steps)</span>
+        </div>
+        <span class="bts-header-chevron">▼</span>
+      </div>
+      <div class="bts-content">${stepsInner}</div>
+    </div>`;
+  }
+
+  let tipsHtml = '';
+  if (tips.length) {
+    tipsHtml = `<div class="terminal-tips">
+      <div class="terminal-tips-title">Tips</div>
+      <ul class="terminal-tips-list">${tips.map(t => `<li>${t}</li>`).join('')}</ul>
+    </div>`;
+  }
+
+  return `<div class="terminal-container" data-terminal-id="${id}">
+    <div class="terminal-titlebar">
+      <span class="terminal-titlebar-title">Terminal — ${escapeHtml(command.split(' ').slice(0, 2).join(' '))}</span>
+    </div>
+    <div class="terminal-body">
+      <div class="terminal-prompt">
+        <span class="terminal-prompt-symbol">$</span>
+        <span class="terminal-typing" data-terminal="${id}"
+              style="--typing-steps:${typingSteps};--typing-duration:${typingDuration}s">${escapeHtml(command)}</span>
+        <span class="terminal-cursor" data-terminal="${id}"></span>
+      </div>
+      <div class="terminal-output" data-terminal="${id}">${output}</div>
+    </div>
+  </div>
+  ${stepsHtml}${tipsHtml}`;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/**
+ * Creates a command navigator with prev/next for multiple commands.
+ * @param {Array} commands - [{name, terminal}]
+ * @param {string} containerId
+ * @returns {string} HTML string
+ */
+function createCommandNavigator(commands, containerId) {
+  if (!commands.length) return '';
+  const panels = commands.map((cmd, i) =>
+    `<div class="cmd-nav-panel${i === 0 ? ' active' : ''}" data-nav="${containerId}" data-index="${i}">
+      ${cmd.terminal}
+    </div>`
+  ).join('');
+
+  const dots = commands.map((_, i) =>
+    `<span class="cmd-progress-dot${i === 0 ? ' active' : ''}" data-nav="${containerId}" data-dot="${i}"></span>`
+  ).join('');
+
+  return `<div class="cmd-navigator" data-nav-id="${containerId}" data-current="0" data-total="${commands.length}">
+    <div class="cmd-nav-controls">
+      <button class="cmd-nav-btn cmd-nav-prev" data-nav="${containerId}" disabled>← Previous</button>
+      <span class="cmd-nav-label" data-nav="${containerId}">
+        <strong>${commands[0].name}</strong> — 1 of ${commands.length}
+      </span>
+      <button class="cmd-nav-btn cmd-nav-next" data-nav="${containerId}" ${commands.length <= 1 ? 'disabled' : ''}>Next →</button>
+    </div>
+    ${panels}
+    <div class="cmd-progress" data-nav="${containerId}">${dots}</div>
+  </div>`;
+}
+
+/**
+ * Initializes all terminal animations, click handlers, and navigator logic.
+ * Call after interactive terminal content is in the DOM.
+ */
+function initTerminalAnimations() {
+  // -- Typewriter effect (only for visible terminals) --
+  document.querySelectorAll('.terminal-typing:not(.animate)').forEach(el => {
+    // Skip terminals hidden inside inactive navigator panels
+    const panel = el.closest('.cmd-nav-panel');
+    if (panel && !panel.classList.contains('active')) return;
+
+    // Skip terminals hidden inside inactive branch panels
+    const branchPanel = el.closest('.branch-panel');
+    if (branchPanel && !branchPanel.classList.contains('active')) return;
+
+    el.classList.add('animate');
+    const termId = el.dataset.terminal;
+    const steps = parseInt(el.style.getPropertyValue('--typing-steps')) || 20;
+    const durationMs = steps * 50;
+
+    // After typing: hide cursor, show output
+    setTimeout(() => {
+      const cursor = document.querySelector(`.terminal-cursor[data-terminal="${termId}"]`);
+      if (cursor) cursor.classList.add('hidden');
+      const output = document.querySelector(`.terminal-output[data-terminal="${termId}"]`);
+      if (output) output.classList.add('visible');
+    }, durationMs + 200);
+  });
+
+  // -- BTS header expand/collapse --
+  document.querySelectorAll('.bts-header').forEach(header => {
+    if (header.dataset.bound) return;
+    header.dataset.bound = '1';
+    header.addEventListener('click', () => {
+      const panel = header.closest('.bts-panel');
+      if (!panel) return;
+      const expanded = panel.classList.toggle('expanded');
+      if (expanded) {
+        // Stagger-reveal steps
+        const termId = header.dataset.terminal;
+        const btsSteps = panel.querySelectorAll('.bts-step');
+        const arrows = panel.querySelectorAll('.bts-arrow');
+        btsSteps.forEach((step, i) => {
+          setTimeout(() => {
+            step.classList.add('visible');
+            if (i === 0) step.classList.add('active');
+            if (arrows[i]) arrows[i].classList.add('visible');
+          }, i * 180);
+          // Briefly highlight each step
+          setTimeout(() => {
+            btsSteps.forEach(s => s.classList.remove('active'));
+            step.classList.add('active');
+          }, i * 180 + 80);
+        });
+        // Remove active from all at end
+        setTimeout(() => {
+          btsSteps.forEach(s => s.classList.remove('active'));
+        }, btsSteps.length * 180 + 300);
+      }
+    });
+  });
+
+  // -- Command Navigator --
+  document.querySelectorAll('.cmd-navigator').forEach(nav => {
+    if (nav.dataset.bound) return;
+    nav.dataset.bound = '1';
+    const navId = nav.dataset.navId;
+    const total = parseInt(nav.dataset.total);
+
+    function goTo(index) {
+      if (index < 0 || index >= total) return;
+      nav.dataset.current = index;
+      // Panels
+      nav.querySelectorAll('.cmd-nav-panel').forEach((p, i) => {
+        p.classList.toggle('active', i === index);
+      });
+      // Dots
+      nav.querySelectorAll('.cmd-progress-dot').forEach((d, i) => {
+        d.classList.toggle('active', i === index);
+      });
+      // Buttons
+      const prev = nav.querySelector('.cmd-nav-prev');
+      const next = nav.querySelector('.cmd-nav-next');
+      if (prev) prev.disabled = index === 0;
+      if (next) next.disabled = index === total - 1;
+      // Label - read command name from active panel's terminal title
+      const label = nav.querySelector('.cmd-nav-label');
+      if (label) {
+        const activePanel = nav.querySelector(`.cmd-nav-panel[data-index="${index}"]`);
+        const titleEl = activePanel?.querySelector('.terminal-titlebar-title');
+        const cmdName = titleEl ? titleEl.textContent.replace('Terminal — ', '') : `Command ${index + 1}`;
+        label.innerHTML = `<strong>${cmdName}</strong> — ${index + 1} of ${total}`;
+      }
+      // Reset typing animation for newly active panel so it replays
+      const activePanel = nav.querySelector(`.cmd-nav-panel[data-index="${index}"]`);
+      if (activePanel) {
+        const typing = activePanel.querySelector('.terminal-typing');
+        const cursor = activePanel.querySelector('.terminal-cursor');
+        const output = activePanel.querySelector('.terminal-output');
+        if (typing && typing.classList.contains('animate')) {
+          // Reset: remove animate class, hide output, show cursor
+          typing.classList.remove('animate');
+          if (cursor) cursor.classList.remove('hidden');
+          if (output) output.classList.remove('visible');
+          // Force reflow then re-add animate to restart the animation
+          void typing.offsetWidth;
+        }
+      }
+      // Re-init typing for newly visible terminal
+      initTerminalAnimations();
+    }
+
+    nav.querySelector('.cmd-nav-prev')?.addEventListener('click', () => {
+      goTo(parseInt(nav.dataset.current) - 1);
+    });
+    nav.querySelector('.cmd-nav-next')?.addEventListener('click', () => {
+      goTo(parseInt(nav.dataset.current) + 1);
+    });
+    nav.querySelectorAll('.cmd-progress-dot').forEach(dot => {
+      dot.addEventListener('click', () => {
+        goTo(parseInt(dot.dataset.dot));
+      });
+    });
+
+    // Keyboard support
+    if (!nav.dataset.keybound) {
+      nav.dataset.keybound = '1';
+      document.addEventListener('keydown', (e) => {
+        // Only if this navigator's section is visible
+        const section = nav.closest('.section');
+        if (!section || !section.classList.contains('active')) return;
+        if (e.key === 'ArrowRight') goTo(parseInt(nav.dataset.current) + 1);
+        if (e.key === 'ArrowLeft') goTo(parseInt(nav.dataset.current) - 1);
+      });
+    }
+  });
+
+  // -- Branching Terminal choice buttons --
+  document.querySelectorAll('.branch-container').forEach(container => {
+    if (container.dataset.bound) return;
+    container.dataset.bound = '1';
+    const branchId = container.dataset.branchId;
+
+    container.querySelectorAll('.branch-choice-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const index = parseInt(btn.dataset.branchIndex);
+
+        // Update selected button
+        container.querySelectorAll('.branch-choice-btn').forEach(b =>
+          b.classList.toggle('selected', parseInt(b.dataset.branchIndex) === index)
+        );
+
+        // Show the matching panel, hide others
+        container.querySelectorAll('.branch-panel').forEach(panel => {
+          const isTarget = parseInt(panel.dataset.branchIndex) === index;
+          panel.classList.toggle('active', isTarget);
+
+          if (isTarget) {
+            // Reset typing animation so it replays
+            const typing = panel.querySelector('.terminal-typing');
+            const cursor = panel.querySelector('.terminal-cursor');
+            const output = panel.querySelector('.terminal-output');
+            if (typing && typing.classList.contains('animate')) {
+              typing.classList.remove('animate');
+              if (cursor) cursor.classList.remove('hidden');
+              if (output) output.classList.remove('visible');
+              // Reset BTS panel state
+              const btsPanel = panel.querySelector('.bts-panel');
+              if (btsPanel) {
+                btsPanel.classList.remove('expanded');
+                btsPanel.querySelectorAll('.bts-step').forEach(s => {
+                  s.classList.remove('visible', 'active');
+                });
+                btsPanel.querySelectorAll('.bts-arrow').forEach(a => {
+                  a.classList.remove('visible');
+                });
+              }
+              void typing.offsetWidth; // force reflow
+            }
+            // Re-init to trigger typing for newly visible terminal
+            initTerminalAnimations();
+          }
+        });
+      });
+    });
+  });
+
+}
+
+/**
+ * Creates a learning roadmap.
+ * @param {Array} stops - [{id, title, description, section, status}]
+ * @returns {string} HTML string
+ */
+function createRoadmap(stops) {
+  if (!stops.length) return '';
+  const currentIdx = stops.findIndex(s => s.status === 'current');
+  const progress = currentIdx >= 0 ? Math.round(((currentIdx + 0.5) / stops.length) * 100) : 0;
+
+  const stopsHtml = stops.map(s => {
+    return `<div class="roadmap-stop ${s.status}" data-section-link="${s.section}" onclick="navigateTo('${s.section}')">
+      <div class="roadmap-stop-marker"></div>
+      <div class="roadmap-stop-content">
+        <div class="roadmap-stop-title">${escapeHtml(s.title)}</div>
+        <div class="roadmap-stop-desc">${s.description}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="roadmap" style="--track-progress:${progress}%">
+    <div class="roadmap-track"></div>
+    ${stopsHtml}
+  </div>`;
+}
+
+/**
+ * Creates a terminal with choice branches. Shows a scenario description + choice buttons.
+ * User clicks a choice -> reveals that branch's terminal + BTS steps.
+ * @param {Object} config
+ * @param {string} config.id - unique id
+ * @param {string} config.scenario - description of what you're about to do
+ * @param {Array} config.choices - [{
+ *   label: string,          // button text
+ *   description: string,    // short description under button
+ *   terminal: {             // same config as createInteractiveTerminal
+ *     command, output, steps, tips
+ *   }
+ * }]
+ * @returns {string} HTML string
+ */
+function createBranchingTerminal(config) {
+  const { id, scenario, choices = [] } = config;
+  if (!choices.length) return '';
+
+  const choiceButtons = choices.map((choice, i) =>
+    `<button class="branch-choice-btn${i === 0 ? ' selected' : ''}"
+            data-branch="${id}" data-branch-index="${i}">
+      <div class="branch-choice-label">${escapeHtml(choice.label)}</div>
+      <div class="branch-choice-desc">${escapeHtml(choice.description)}</div>
+    </button>`
+  ).join('');
+
+  const panels = choices.map((choice, i) => {
+    const terminalConfig = Object.assign({}, choice.terminal, {
+      id: `${id}-branch-${i}`
+    });
+    const terminalHtml = createInteractiveTerminal(terminalConfig);
+    return `<div class="branch-panel${i === 0 ? ' active' : ''}"
+                data-branch="${id}" data-branch-index="${i}">
+      ${terminalHtml}
+    </div>`;
+  }).join('');
+
+  return `<div class="branch-container" data-branch-id="${id}">
+    <div class="branch-scenario">${scenario}</div>
+    <div class="branch-choices">${choiceButtons}</div>
+    ${panels}
+  </div>`;
+}
+
+// ── Glossary Tooltip System ──────────────────────────────────
+const _GLOSSARY = {
+  'evaluator': 'A component that scores model output on a specific dimension (e.g., coherence, f1_score). Can be built-in or custom via the @evaluator decorator.',
+  'target': 'The AI model or endpoint being evaluated. Can be a custom function, an Azure OpenAI deployment, or an Azure AI Agent.',
+  'dataset': 'A JSONL or CSV file containing input rows. Each row is passed through targets and then scored by evaluators.',
+  'registry': 'A global dictionary that maps component names to their classes. Populated by @evaluator, @target, @dataset decorators.',
+  'Cartesian expansion': 'When target args contain lists, the engine generates all combinations. E.g., 2 models x 3 temperatures = 6 variants.',
+  'mapping': 'Configuration that connects evaluator inputs to data sources. Format: "target.field" or "dataset.field".',
+  'behind the scenes': 'The step-by-step code execution that happens when you run a CLI command.',
+};
+
+function glossaryTip(term) {
+  const def = _GLOSSARY[term] || _GLOSSARY[term.toLowerCase()] || '';
+  if (!def) return term;
+  return '<span class="glossary-term" tabindex="0" data-tip="' + def.replace(/"/g, '&quot;') + '">' + term + '</span>';
+}
+
 // ── Init ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
@@ -687,4 +1085,40 @@ document.addEventListener('DOMContentLoaded', () => {
   initBackToTop();
   initCopyButtons();
   initTraceInteraction();
+  initKeyboardHelp();
 });
+
+// ── Keyboard Shortcuts Overlay ──────────────────────────────
+function initKeyboardHelp() {
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '?' && !e.target.matches('input, textarea')) {
+      e.preventDefault();
+      let overlay = document.getElementById('shortcuts-overlay');
+      if (overlay) {
+        overlay.classList.toggle('visible');
+        return;
+      }
+      overlay = document.createElement('div');
+      overlay.id = 'shortcuts-overlay';
+      overlay.className = 'shortcuts-overlay visible';
+      overlay.innerHTML = `
+        <div class="shortcuts-panel">
+          <div class="shortcuts-header">
+            <h4>Keyboard Shortcuts</h4>
+            <button onclick="this.closest('.shortcuts-overlay').classList.remove('visible')">&times;</button>
+          </div>
+          <div class="shortcuts-body">
+            <div class="shortcut-row"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> <span>Navigate commands</span></div>
+            <div class="shortcut-row"><kbd>Cmd</kbd>+<kbd>K</kbd> <span>Search sections</span></div>
+            <div class="shortcut-row"><kbd>?</kbd> <span>Show this help</span></div>
+            <div class="shortcut-row"><kbd>Esc</kbd> <span>Close overlays</span></div>
+          </div>
+        </div>
+      `;
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.classList.remove('visible');
+      });
+      document.body.appendChild(overlay);
+    }
+  });
+}

@@ -394,6 +394,7 @@ class WordCountEvaluator(BaseEvaluator):
   // -- ASSEMBLE evaluators section -----------------------------
 
   document.getElementById('evaluators').innerHTML = `
+    <p style="margin-bottom:20px"><a style="color:var(--accent);font-size:13px;text-decoration:none;cursor:pointer" onclick="navigateTo('interactive-cli');return false;">&#8592; Back to CLI Explorer</a></p>
     <div class="section-hero">
       <h1>All Evaluators</h1>
       <p>Complete catalog of built-in evaluators -- class hierarchy, contracts, metrics, and backends.</p>
@@ -472,6 +473,12 @@ class WordCountEvaluator(BaseEvaluator):
       { label: 'RAI Service', content: raiTrace },
       { label: 'Engine Execution', content: engineEvalTrace },
     ], 'evaluator-backends')}
+
+    <div class="related-footer"><h4>Related</h4><div class="related-links">
+      <a class="deep-dive-link" onclick="navigateTo('interactive-cli');return false;">Try ev evaluator add</a>
+      <a class="deep-dive-link" onclick="navigateTo('custom');return false;">Custom Components</a>
+      <a class="deep-dive-link" onclick="navigateTo('engine-flow');return false;">How Evaluators Run</a>
+    </div></div>
   `;
 
 
@@ -1028,6 +1035,7 @@ def validate_mapping_format(self) -> "EvaluatorConfig":
   // -- ASSEMBLE configuration section --------------------------
 
   document.getElementById('configuration').innerHTML = `
+    <p style="margin-bottom:20px"><a style="color:var(--accent);font-size:13px;text-decoration:none;cursor:pointer" onclick="navigateTo('interactive-cli');return false;">&#8592; Back to CLI Explorer</a></p>
     <div class="section-hero">
       <h1>Configuration Reference</h1>
       <p>Complete schema for experiment YAML configs -- every field, type, default, and where it is used in the engine.</p>
@@ -1106,6 +1114,12 @@ def validate_mapping_format(self) -> "EvaluatorConfig":
     <h2>Complete Config Examples</h2>
     <p>Three real-world configurations from simple to complex. Inline comments show where each field is used:</p>
     ${configExampleTabs}
+
+    <div class="related-footer"><h4>Related</h4><div class="related-links">
+      <a class="deep-dive-link" onclick="navigateTo('interactive-cli');return false;">Try ev validate</a>
+      <a class="deep-dive-link" onclick="navigateTo('targets');return false;">Target Configuration</a>
+      <a class="deep-dive-link" onclick="navigateTo('evaluators');return false;">Evaluator Configuration</a>
+    </div></div>
   `;
 }
 

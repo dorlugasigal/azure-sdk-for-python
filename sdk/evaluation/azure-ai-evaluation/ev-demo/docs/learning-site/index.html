@@ -40,85 +40,31 @@
   </div>
 
   <div class="sidebar-nav">
-    <!-- Architecture -->
+    <!-- Primary -->
     <div class="nav-group">
       <div class="nav-group-header">
-        <span>Architecture</span>
+        <span>Start Here</span>
         <span class="chevron">▼</span>
       </div>
       <div class="nav-items">
-        <a class="nav-item active" data-section="architecture">Architecture Overview</a>
+        <a class="nav-item active" data-section="roadmap">Learning Roadmap</a>
+        <a class="nav-item" data-section="interactive-cli">CLI Explorer</a>
       </div>
     </div>
 
-    <!-- Engine Flow -->
-    <div class="nav-group">
+    <!-- Deep Dives -->
+    <div class="nav-group collapsed">
       <div class="nav-group-header">
-        <span>Engine Flow</span>
+        <span>Deep Dives</span>
         <span class="chevron">▼</span>
       </div>
       <div class="nav-items">
-        <a class="nav-item" data-section="engine-flow">End-to-End Pipeline</a>
-      </div>
-    </div>
-
-    <!-- Evaluators -->
-    <div class="nav-group">
-      <div class="nav-group-header">
-        <span>Evaluators</span>
-        <span class="chevron">▼</span>
-      </div>
-      <div class="nav-items">
-        <a class="nav-item" data-section="evaluators">
-          Evaluator Catalog
-          <span class="nav-badge">32+</span>
-        </a>
-      </div>
-    </div>
-
-    <!-- Configuration -->
-    <div class="nav-group">
-      <div class="nav-group-header">
-        <span>Configuration</span>
-        <span class="chevron">▼</span>
-      </div>
-      <div class="nav-items">
-        <a class="nav-item" data-section="configuration">Config Reference</a>
-      </div>
-    </div>
-
-    <!-- CLI -->
-    <div class="nav-group">
-      <div class="nav-group-header">
-        <span>CLI Commands</span>
-        <span class="chevron">▼</span>
-      </div>
-      <div class="nav-items">
-        <a class="nav-item" data-section="cli">
-          Command Reference
-          <span class="nav-badge">10</span>
-        </a>
-      </div>
-    </div>
-
-    <!-- Targets -->
-    <div class="nav-group">
-      <div class="nav-group-header">
-        <span>Targets</span>
-        <span class="chevron">▼</span>
-      </div>
-      <div class="nav-items">
-        <a class="nav-item" data-section="targets">Target System</a>
-      </div>
-    </div>
-
-    <!-- Custom Components -->
-    <div class="nav-group">
-      <div class="nav-group-header">
-        <span>Extensibility</span>
-        <span class="chevron">▼</span>
-      </div>
-      <div class="nav-items">
+        <a class="nav-item" data-section="architecture">Architecture</a>
+        <a class="nav-item" data-section="engine-flow">Engine Flow</a>
+        <a class="nav-item" data-section="evaluators">Evaluators</a>
+        <a class="nav-item" data-section="configuration">Configuration</a>
+        <a class="nav-item" data-section="cli">CLI Reference</a>
+        <a class="nav-item" data-section="targets">Targets</a>
         <a class="nav-item" data-section="custom">Custom Components</a>
       </div>
     </div>
@@ -129,14 +75,26 @@
 <main class="main-content">
   <div class="content-header">
     <div class="breadcrumb">
-      <a href="#" onclick="navigateTo('architecture');return false;">Home</a>
+      <a href="#" onclick="navigateTo('roadmap');return false;">Home</a>
       <span class="sep">›</span>
-      <span id="breadcrumb-current">Architecture Overview</span>
+      <span id="breadcrumb-current">Learning Roadmap</span>
     </div>
   </div>
 
   <div class="content-body">
-    <section id="architecture" class="section active">
+    <!-- Tier 1: Primary -->
+    <section id="roadmap" class="section active">
+      <h2 class="section-title">Learning Roadmap</h2>
+      <p class="section-subtitle loading">Loading roadmap...</p>
+    </section>
+
+    <section id="interactive-cli" class="section">
+      <h2 class="section-title">Interactive CLI Deep Dive</h2>
+      <p class="section-subtitle loading">Loading interactive content...</p>
+    </section>
+
+    <!-- Tier 2: Deep Dives -->
+    <section id="architecture" class="section">
       <h2 class="section-title">Architecture Overview</h2>
       <p class="section-subtitle loading">Loading architecture content...</p>
     </section>
@@ -181,6 +139,7 @@
 <script src="content-arch-engine.js"></script>
 <script src="content-eval-config.js"></script>
 <script src="content-cli-targets.js"></script>
+<script src="content-interactive-cli.js"></script>
 
 </body>
 </html>

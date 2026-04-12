@@ -9,6 +9,7 @@ function initCliTargetsContent() {
   // SECTION 1: CLI Commands Reference
   // ════════════════════════════════════════════════════════════
   document.getElementById('cli').innerHTML = `
+    <p style="margin-bottom:20px"><a style="color:var(--accent);font-size:13px;text-decoration:none;cursor:pointer" onclick="navigateTo('interactive-cli');return false;">&#8592; Back to CLI Explorer</a></p>
     <h2>CLI Commands Reference</h2>
     <p class="section-intro">The <code>ev</code> CLI is the primary interface for the Azure AI Evaluation Engine. Built with Click, it manages evaluation runs, project scaffolding, result viewing, and component discovery.</p>
 
@@ -244,12 +245,17 @@ ev cloud`, 'bash', { title: 'ev cloud -- Usage' })}
       ]
     )}
 
+    <div class="related-footer"><h4>Related</h4><div class="related-links">
+      <a class="deep-dive-link" onclick="navigateTo('interactive-cli');return false;">Interactive CLI Explorer</a>
+      <a class="deep-dive-link" onclick="navigateTo('configuration');return false;">Configuration Reference</a>
+    </div></div>
   `;
 
   // ════════════════════════════════════════════════════════════
   // SECTION 2: Targets System
   // ════════════════════════════════════════════════════════════
   document.getElementById('targets').innerHTML = `
+    <p style="margin-bottom:20px"><a style="color:var(--accent);font-size:13px;text-decoration:none;cursor:pointer" onclick="navigateTo('interactive-cli');return false;">&#8592; Back to CLI Explorer</a></p>
     <h2>Targets System</h2>
     <p class="section-intro">Targets represent the systems under evaluation -- your models, agents, or APIs. The engine uses the <code>TargetFactory</code> to resolve YAML config into concrete target instances, supports Cartesian expansion of arguments, and maps dataset fields to target parameters.</p>
 
@@ -431,12 +437,19 @@ def _apply_target_input_mapping(
       project_name: \${FOUNDRY_PROJECT}`, 'yaml', { filePath: 'config.yaml', title: 'Azure AI Agent Config' })}`
       },
     ], 'target-config-examples')}
+
+    <div class="related-footer"><h4>Related</h4><div class="related-links">
+      <a class="deep-dive-link" onclick="navigateTo('interactive-cli');return false;">Try ev target add</a>
+      <a class="deep-dive-link" onclick="navigateTo('custom');return false;">Custom Components</a>
+      <a class="deep-dive-link" onclick="navigateTo('configuration');return false;">Target Config Fields</a>
+    </div></div>
   `;
 
   // ════════════════════════════════════════════════════════════
   // SECTION 3: Custom Components (Extensibility)
   // ════════════════════════════════════════════════════════════
   document.getElementById('custom').innerHTML = `
+    <p style="margin-bottom:20px"><a style="color:var(--accent);font-size:13px;text-decoration:none;cursor:pointer" onclick="navigateTo('interactive-cli');return false;">&#8592; Back to CLI Explorer</a></p>
     <h2>Custom Components</h2>
     <p class="section-intro">Extend the evaluation engine with custom evaluators, targets, and datasets using Python decorators. The engine discovers and registers them automatically via AST-based scanning.</p>
 
@@ -727,6 +740,12 @@ class SqlDataset:
     ${createInfoCard('Excluded Directories',
       'Discovery skips these directories: <code>.venv/</code>, <code>venv/</code>, <code>env/</code>, <code>.env/</code>, <code>__pycache__/</code>, <code>.pytest_cache/</code>, <code>.git/</code>, <code>node_modules/</code>, <code>.tox/</code>, <code>.mypy_cache/</code>, <code>build/</code>, <code>dist/</code>, <code>.eggs/</code>, <code>output/</code>, <code>logs/</code>, <code>samples/</code>, <code>tests/</code>, <code>experiment/</code>. Only non-private <code>.py</code> files are scanned.',
     'info')}
+
+    <div class="related-footer"><h4>Related</h4><div class="related-links">
+      <a class="deep-dive-link" onclick="navigateTo('interactive-cli');return false;">Try ev discover</a>
+      <a class="deep-dive-link" onclick="navigateTo('evaluators');return false;">Built-in Evaluators</a>
+      <a class="deep-dive-link" onclick="navigateTo('targets');return false;">Target System</a>
+    </div></div>
   `;
 }
 

@@ -11,6 +11,7 @@ function initArchEngineContent() {
   var archEl = document.getElementById('architecture');
   if (archEl) {
     var archContent = [
+      '<p style="margin-bottom:20px"><a style="color:var(--accent);font-size:13px;text-decoration:none;cursor:pointer" onclick="navigateTo(\'interactive-cli\');return false;">&#8592; Back to CLI Explorer</a></p>',
       '<h2>Architecture Overview</h2>',
       '<p style="color:var(--text-secondary);margin-bottom:24px">',
       'A comprehensive tour of the <strong>azure-ai-evaluation</strong> engine &mdash; ',
@@ -402,7 +403,12 @@ function initArchEngineContent() {
           ['<code>OutputFormatter</code>',     '<code>evaluation/output_formatter.py</code>',      'persist_aitk_sidebar_results() and persist_aitk_job_artifacts() for AITK + local dir'],
           ['<code>OTelTraceCapture</code>',    '<code>tracing/otel_trace_capture.py</code>',       'Captures OpenTelemetry spans during inference for tool-call extraction']
         ]
-      )
+      ),
+      '<div class="related-footer"><h4>Related</h4><div class="related-links">' +
+        '<a class="deep-dive-link" onclick="navigateTo(\'interactive-cli\');return false;">Try ev discover</a>' +
+        '<a class="deep-dive-link" onclick="navigateTo(\'engine-flow\');return false;">Engine Flow Deep Dive</a>' +
+        '<a class="deep-dive-link" onclick="navigateTo(\'configuration\');return false;">Configuration Reference</a>' +
+      '</div></div>'
     ].join('\n');
 
     archEl.innerHTML = archContent;
@@ -414,6 +420,7 @@ function initArchEngineContent() {
   var engineEl = document.getElementById('engine-flow');
   if (engineEl) {
     var engineContent = [
+      '<p style="margin-bottom:20px"><a style="color:var(--accent);font-size:13px;text-decoration:none;cursor:pointer" onclick="navigateTo(\'interactive-cli\');return false;">&#8592; Back to CLI Explorer</a></p>',
       '<h2>Engine Flow</h2>',
       '<p style="color:var(--text-secondary);margin-bottom:24px">',
       'Step-by-step walkthrough of the complete evaluation pipeline &mdash; ',
@@ -1289,7 +1296,12 @@ function initArchEngineContent() {
         'The <code>OTelTraceCapture</code> context manager intercepts spans emitted by the Azure OpenAI SDK ' +
         'and extracts tool definitions automatically -- no manual instrumentation required.',
         'info'
-      )
+      ),
+      '<div class="related-footer"><h4>Related</h4><div class="related-links">' +
+        '<a class="deep-dive-link" onclick="navigateTo(\'interactive-cli\');return false;">Try ev run in CLI Explorer</a>' +
+        '<a class="deep-dive-link" onclick="navigateTo(\'evaluators\');return false;">Evaluators Deep Dive</a>' +
+        '<a class="deep-dive-link" onclick="navigateTo(\'targets\');return false;">Targets Deep Dive</a>' +
+      '</div></div>'
     ].join('\n');
 
     engineEl.innerHTML = engineContent;
