@@ -121,6 +121,10 @@ class TargetVariantConfig(BaseModel):
     azure_ai_project: Optional[str] = None  # direct override; otherwise resolved from connection
     instructions: Optional[str] = None
 
+    # Input mapping: rename dataset fields for target.infer()
+    # e.g. {"query": "dataset.question"} means infer() receives query=<dataset["question"]>
+    input_mapping: Dict[str, str] = Field(default_factory=dict)
+
     @model_validator(mode="before")
     @classmethod
     def normalize_args(cls, values: Any) -> Any:
@@ -139,6 +143,18 @@ class TargetVariantConfig(BaseModel):
                 f"Invalid target type '{self.type}' for target '{self.name}'. "
                 f"Supported types: {sorted(_VALID_TARGET_TYPES)}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_input_mapping_format(self) -> "TargetVariantConfig":
+        """Validate input_mapping values match 'dataset.<field>' format."""
+        if self.input_mapping:
+            for param, source in self.input_mapping.items():
+                if not source.startswith("dataset.") or source.count(".") != 1:
+                    raise ValueError(
+                        f"Invalid input_mapping '{source}' for param '{param}' in target '{self.name}': "
+                        f"expected format 'dataset.<field>'"
+                    )
         return self
 
 
@@ -271,7 +287,20 @@ class Config(BaseModel):
                 conn_names.add(c.get("name", ""))
 
         for target_cfg in exp.targets:
-            if target_cfg.type != "custom" and target_cfg.connection_name not in conn_names:
+            if target_cfg.type == "custom":
+                continue
+            # azure_ai_agent targets can resolve their project endpoint from
+            # cloud.foundry_project, so a connection is only required when that
+            # fallback is unavailable.
+            if target_cfg.type == "azure_ai_agent":
+                has_cloud_project = (
+                    exp.cloud is not None
+                    and getattr(exp.cloud, "foundry_project", None)
+                )
+                has_target_project = getattr(target_cfg, "azure_ai_project", None)
+                if has_cloud_project or has_target_project:
+                    continue
+            if target_cfg.connection_name not in conn_names:
                 errors.append(
                     f"Target '{target_cfg.name}' references connection "
                     f"'{target_cfg.connection_name}' which is not defined. "

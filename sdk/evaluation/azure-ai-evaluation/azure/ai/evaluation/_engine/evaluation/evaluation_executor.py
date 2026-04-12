@@ -197,7 +197,7 @@ class EvaluationExecutor:
         model_instance = model_data["model"]
         model_args = model_data["args"]
         model_config_name = model_data["config"].name
-        target_mapping = getattr(model_data["config"], "mapping", {}) or {}
+        target_mapping = getattr(model_data["config"], "input_mapping", {}) or {}
 
         run_id = f"run_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
@@ -233,7 +233,7 @@ class EvaluationExecutor:
         Orchestrates the full per-record pipeline: input mapping → inference
         → output enrichment → evaluator computation → event emission.
         """
-        from .evaluator import _apply_target_input_mapping, _apply_target_output_mapping
+        from .evaluator import _apply_target_input_mapping
 
         record_id = str(hash(json.dumps(record, sort_keys=True, default=str)))[:12]
         mapped_input = _apply_target_input_mapping(record, target_mapping or {})
@@ -241,10 +241,6 @@ class EvaluationExecutor:
         model_output, agent_trace, response_time_ms = self._run_inference(
             model, mapped_input, model_name, record_id,
         )
-
-        if isinstance(model_output, dict):
-            from .evaluator import _apply_target_output_mapping
-            model_output = _apply_target_output_mapping(model_output, target_mapping or {})
 
         if isinstance(model_output, dict):
             self._enrich_output_from_trace(model_output, agent_trace)

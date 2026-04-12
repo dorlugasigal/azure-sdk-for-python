@@ -18,14 +18,13 @@ from ..models.execution_context import ExecutionContext
 from ..tracing.otel_trace_capture import OTelTraceCapture
 from .output_formatter import OutputFormatter
 from ..targets.target_factory import TargetFactory
-from ..targets.target_mapping import _apply_target_input_mapping, _apply_target_output_mapping
+from ..targets.target_mapping import _apply_target_input_mapping
 from ..tracing.trace_utils import _extract_tool_definitions_from_trace, _infer_tool_definitions_from_trace
 
 # Re-export so that existing ``from .evaluator import …`` statements keep working.
 __all__ = [
     "ModelEvaluator",
     "_apply_target_input_mapping",
-    "_apply_target_output_mapping",
     "_extract_tool_definitions_from_trace",
     "_infer_tool_definitions_from_trace",
 ]

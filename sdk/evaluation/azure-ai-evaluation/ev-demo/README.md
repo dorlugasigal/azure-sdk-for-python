@@ -145,6 +145,22 @@ targets:
     # instructions: "Override prompt"     # Optional instruction override
 ```
 
+#### Target Input Mapping
+
+When dataset field names don't match what your target's `infer()` method expects, use
+`input_mapping` to rename fields before inference:
+
+```yaml
+targets:
+  - name: "my_agent"
+    input_mapping:
+      query: "dataset.user_message"       # infer() receives query=<dataset["user_message"]>
+      context: "dataset.background_info"  # infer() receives context=<dataset["background_info"]>
+```
+
+This is only needed when field names differ — by default the engine auto-detects
+common query fields (`query`, `question`, `prompt`, `input`).
+
 ### Cloud Block
 ```yaml
 cloud:
