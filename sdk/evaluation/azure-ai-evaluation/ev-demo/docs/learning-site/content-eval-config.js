@@ -13,20 +13,19 @@ function initEvalConfigContent() {
 
   const classDiagram = createClassDiagram('Evaluator Class Hierarchy', [
     // Row 0 - abstract root
-    { id: 'base', label: 'EvaluatorBase[T]', type: 'abstract', col: 1.5, row: 0,
+    { id: 'base', label: 'EvaluatorBase[T_EvalValue]', type: 'abstract', col: 1.5, row: 0,
       methods: [
-        { name: '__call__', abstract: true },
-        { name: '_do_eval', abstract: true },
-        { name: '_convert_conversation_to_eval_input', abstract: true }
+        { name: '__call__' },
+        { name: '_do_eval', abstract: true }
       ] },
 
     // Row 1 - intermediate bases
     { id: 'prompty', label: 'PromptyEvaluatorBase', type: 'abstract', parent: 'base', col: 0, row: 1.4,
-      methods: [{ name: '_do_eval' }, { name: '_load_prompty' }] },
-    { id: 'rai', label: 'RaiServiceEvalBase', type: 'abstract', parent: 'base', col: 1.3, row: 1.4,
-      methods: [{ name: '_do_eval' }, { name: '_call_rai_svc' }] },
+      methods: [{ name: '_do_eval' }] },
+    { id: 'rai', label: 'RaiServiceEvaluatorBase', type: 'abstract', parent: 'base', col: 1.3, row: 1.4,
+      methods: [{ name: '_do_eval' }] },
     { id: 'multi', label: 'MultiEvaluatorBase', type: 'abstract', parent: 'base', col: 2.6, row: 1.4,
-      methods: [{ name: '_do_eval' }, { name: '_aggregate' }] },
+      methods: [{ name: '_do_eval' }] },
     { id: 'direct', label: 'Direct Impls', type: 'concrete', parent: 'base', col: 3.6, row: 1.4,
       methods: [{ name: '_do_eval' }] },
 
@@ -99,7 +98,14 @@ function initEvalConfigContent() {
         mapped = {}
         for param, mapping in self.mapping.items():
             source, field = mapping.split(".", 1)
-            mapped[param] = sources.get(source, {}).get(field)
+            value = sources.get(source, {}).get(field)
+            if value is None:
+                if field in ("tool_definitions", "tool_calls"):
+                    mapped[param] = []        # Optional agent fields
+                else:
+                    raise KeyError(f"Field '{field}' not found in '{source}'")
+            else:
+                mapped[param] = value
         return mapped`, 'python', {
     filePath: 'azure/ai/evaluation/_engine/decorators.py',
     title: 'Engine BaseEvaluator Contract'
@@ -160,6 +166,7 @@ class WordCountEvaluator(BaseEvaluator):
                     return self.inner.compute(**kwargs)      # Direct API
                 elif inference_output:
                     fields = self._get_mapped_fields(inference_output)
+                    fields["inference_output"] = inference_output  # Pass full output
                     return self.inner.compute(**fields)       # Engine mode
                 return self.inner.compute()
 
@@ -310,40 +317,40 @@ class WordCountEvaluator(BaseEvaluator):
 
   const promptyTrace = createCallTrace('How PromptyEvaluatorBase Works', [
     { module: 'PromptyEvaluatorBase', func: '__call__(query, response, ...)',
-      file: '_evaluators/_prompty_base.py', tag: 'evaluator',
+      file: '_evaluators/_common/_base_prompty_eval.py', tag: 'evaluator',
       detail: 'Entry point -- validates inputs and converts conversation format.' },
-    { module: 'PromptyEvaluatorBase', func: '_load_prompty()',
-      file: '_evaluators/_prompty_base.py', tag: 'evaluator',
-      detail: 'Loads .prompty file (Jinja2 template) from evaluator asset directory.' },
-    { module: 'PromptyEvaluatorBase', func: '_render_prompt(template, vars)',
-      file: '_evaluators/_prompty_base.py', tag: 'evaluator',
-      detail: 'Renders the Jinja2 template with query, response, context, etc.' },
-    { module: 'PromptyEvaluatorBase', func: '_call_model(prompt)',
-      file: '_evaluators/_prompty_base.py', tag: 'external',
-      detail: 'Sends rendered prompt to the configured LLM deployment (e.g. gpt-4.1-mini).' },
-    { module: 'PromptyEvaluatorBase', func: '_parse_score(llm_output)',
-      file: '_evaluators/_prompty_base.py', tag: 'evaluator',
-      detail: 'Extracts numeric score and reasoning from the LLM JSON response.' },
-    { module: 'PromptyEvaluatorBase', func: 'return {metric: score, metric_reason: reason}',
+    { module: 'PromptyEvaluatorBase', func: '__init__() → AsyncPrompty.load()',
+      file: '_evaluators/_common/_base_prompty_eval.py', tag: 'evaluator',
+      detail: 'Loads .prompty file (Jinja2 template) via AsyncPrompty.load() during initialization.' },
+    { module: 'PromptyEvaluatorBase', func: '_do_eval(eval_input)',
+      file: '_evaluators/_common/_base_prompty_eval.py', tag: 'evaluator',
+      detail: 'Validates inputs, checks for intermediate responses, preprocesses messages.' },
+    { module: 'PromptyEvaluatorBase', func: 'self._flow(timeout=600, **eval_input)',
+      file: '_evaluators/_common/_base_prompty_eval.py', tag: 'external',
+      detail: 'Sends rendered prompt to the configured LLM deployment via the AsyncPrompty flow.' },
+    { module: 'PromptyEvaluatorBase', func: 'parse_quality_evaluator_reason_score(llm_output)',
+      file: '_common/utils.py', tag: 'evaluator',
+      detail: 'Extracts numeric score and reasoning from the LLM JSON response for known evaluators.' },
+    { module: 'PromptyEvaluatorBase', func: 'return {metric: score, metric_reason: reason, ...}',
       file: '', tag: 'data',
-      detail: 'Returns dict with the metric value and optional reasoning string.' },
+      detail: 'Returns dict with score, reason, binary result, token counts, and model metadata.' },
   ]);
 
   const raiTrace = createCallTrace('How RaiServiceEvaluatorBase Works', [
     { module: 'RaiServiceEvaluatorBase', func: '__call__(query, response)',
-      file: '_evaluators/_rai_base.py', tag: 'evaluator',
+      file: '_evaluators/_common/_base_rai_svc_eval.py', tag: 'evaluator',
       detail: 'Entry point -- validates inputs.' },
-    { module: 'RaiServiceEvaluatorBase', func: '_build_payload()',
-      file: '_evaluators/_rai_base.py', tag: 'evaluator',
-      detail: 'Constructs JSON payload with query, response, and evaluation task type.' },
-    { module: 'RaiServiceEvaluatorBase', func: '_call_rai_service(payload)',
-      file: '_evaluators/_rai_base.py', tag: 'external',
+    { module: 'RaiServiceEvaluatorBase', func: '_do_eval(eval_input)',
+      file: '_evaluators/_common/_base_rai_svc_eval.py', tag: 'evaluator',
+      detail: 'Constructs payload and delegates to Azure RAI service via internal helpers.' },
+    { module: 'RAI Service helpers', func: 'submit_request(payload)',
+      file: '_evaluators/_common/_base_rai_svc_eval.py', tag: 'external',
       detail: 'Sends POST to Azure RAI service endpoint with AAD auth token.' },
-    { module: 'RaiServiceEvaluatorBase', func: '_poll_for_result(operation_id)',
-      file: '_evaluators/_rai_base.py', tag: 'external',
+    { module: 'RAI Service helpers', func: 'poll_for_result(operation_id)',
+      file: '_evaluators/_common/_base_rai_svc_eval.py', tag: 'external',
       detail: 'Polls the async operation until completion or timeout.' },
-    { module: 'RaiServiceEvaluatorBase', func: '_parse_response(rai_result)',
-      file: '_evaluators/_rai_base.py', tag: 'evaluator',
+    { module: 'RaiServiceEvaluatorBase', func: '_do_eval → parse response',
+      file: '_evaluators/_common/_base_rai_svc_eval.py', tag: 'evaluator',
       detail: 'Extracts severity level (0-7) or boolean and reasoning from RAI response.' },
     { module: 'RaiServiceEvaluatorBase', func: 'return {metric: severity, metric_reason: ...}',
       file: '', tag: 'data',
