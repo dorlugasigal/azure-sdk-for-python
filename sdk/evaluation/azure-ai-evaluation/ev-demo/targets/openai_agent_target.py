@@ -65,18 +65,12 @@ class WeatherAgentOpenAITarget(BaseTarget):
         super().__init__(**kwargs)
 
         conn = context.connections_registry[connection_name]
-        project_endpoint = conn.get("azure_ai_project")
-        if not project_endpoint:
-            raise ValueError(
-                f"Connection '{connection_name}' is missing 'azure_ai_project'. "
-                "Add it to the connections section of your YAML config."
-            )
-        self._deployment = conn.get("azure_deployment", "gpt-4.1")
+        self._deployment = getattr(conn, "azure_deployment", "gpt-4.1")
 
         from azure.identity import AzureCliCredential
         from azure.ai.projects import AIProjectClient
 
-        project_client = AIProjectClient(endpoint=project_endpoint, credential=AzureCliCredential())
+        project_client = AIProjectClient(endpoint=conn.azure_ai_project, credential=AzureCliCredential())
         self._client = project_client.get_openai_client()
 
     def infer(self, input: Dict[str, Any]) -> Dict[str, Any]:

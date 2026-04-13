@@ -217,7 +217,7 @@ class MyEvaluator(BaseEvaluator):
     def __init__(self, config=None, context=None):
         super().__init__(context)
         conn = context.connections_registry["my_service"]
-        self.endpoint = conn["endpoint"]
+        self.endpoint = conn.endpoint
 ```
 
 ## Environment Setup

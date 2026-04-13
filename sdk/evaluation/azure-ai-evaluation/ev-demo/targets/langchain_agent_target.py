@@ -47,13 +47,7 @@ class WeatherAgentLangChainTarget(BaseTarget):
         super().__init__(**kwargs)
 
         conn = context.connections_registry[connection_name]
-        azure_endpoint = conn.get("azure_endpoint")
-        if not azure_endpoint:
-            raise ValueError(
-                f"Connection '{connection_name}' is missing 'azure_endpoint'. "
-                "Add it to the connections section of your YAML config."
-            )
-        deployment = conn.get("azure_deployment", "gpt-4.1")
+        deployment = getattr(conn, "azure_deployment", "gpt-4.1")
 
         from langchain_openai import AzureChatOpenAI
         from langchain_core.tools import tool as langchain_tool
@@ -65,7 +59,7 @@ class WeatherAgentLangChainTarget(BaseTarget):
         )
 
         model = AzureChatOpenAI(
-            azure_endpoint=azure_endpoint,
+            azure_endpoint=conn.azure_endpoint,
             azure_deployment=deployment,
             model=deployment,
             azure_ad_token_provider=token_provider,
