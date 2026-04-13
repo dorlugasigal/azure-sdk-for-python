@@ -58,14 +58,15 @@ class ModelEvaluator:
 
         discover_components()
         self.config = Config.from_yaml(config_path)
-        self._trace_capture = self._setup_tracing()
 
         if load_config_only:
+            self._trace_capture = self._setup_tracing()
             return
 
         self._current_dir = Path.cwd()
         self._current_experiment_dir = self._create_experiment_dir()
         self._setup_logging()
+        self._trace_capture = self._setup_tracing()
         self._output = self._setup_output_formatter()
         self.connections_registry = self._build_connections_registry()
         self.execution_context = self._build_execution_context()
@@ -89,8 +90,20 @@ class ModelEvaluator:
         return None
 
     def _setup_logging(self) -> None:
-        """Configure structured logging with a file handler in the experiment directory."""
-        self._logger = _setup_logger(__name__, logs_path=str(self._current_experiment_dir))
+        """Configure structured logging with a file handler in the experiment directory.
+
+        Sets up the ``azure.ai.evaluation._engine`` parent logger so that
+        every sub-module under ``_engine`` automatically gets file + console
+        logging via propagation — matching the original evee project where
+        each component called ``setup_logger()`` individually.
+        """
+        _ENGINE_LOGGER_NAME = "azure.ai.evaluation._engine"
+        _setup_logger(
+            _ENGINE_LOGGER_NAME,
+            logs_path=str(self._current_experiment_dir),
+            force=True,
+        )
+        self._logger = logging.getLogger(__name__)
 
     def _setup_output_formatter(self) -> OutputFormatter:
         """Build the :class:`OutputFormatter` for AITK persistence and result building.

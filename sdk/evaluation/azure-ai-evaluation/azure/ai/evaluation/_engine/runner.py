@@ -1,6 +1,7 @@
 """ExperimentRunner — orchestrates evaluation with compute + tracking separation."""
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, List, Optional
 
@@ -12,9 +13,7 @@ from .compute import (
     RunContext,
 )
 from .models.config import Config
-from .logging import setup_logger
-
-logger = setup_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ExperimentRunner:
