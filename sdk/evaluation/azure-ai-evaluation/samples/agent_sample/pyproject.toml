@@ -1,0 +1,18 @@
+[project]
+name = "agent_sample_evaluation"
+version = "0.1.0"
+description = "evaluate custom foundry agent and model on question answering with context"
+requires-python = ">=3.12"
+
+dependencies = [
+    "azure-ai-evaluation[opentelemetry]",
+    "python-dotenv>=1.0.0",
+    "azure-ai-projects",
+    "openai",
+]
+
+[tool.uv]
+prerelease = "allow"
+
+[tool.uv.sources]
+azure-ai-evaluation = { path = "../..", editable = true }
