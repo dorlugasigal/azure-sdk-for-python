@@ -8,7 +8,7 @@ from pydantic import Field
 from azure.ai.evaluation._engine.decorators import ExecutionContext, target, BaseTarget
 
 from agent_framework import Agent, tool
-from agent_framework.openai import OpenAIChatClient
+from agent_framework.foundry import FoundryChatClient
 
 import re
 from random import randint
@@ -77,11 +77,7 @@ class WeatherAgentLocalTarget(BaseTarget):
         self._agent_name = normalize_agent_name(f"lotr-agent-{context.model_variant_id}")
         self._instructions = load_agent_instructions(__file__, instructions_path)
         self._tools = WeatherTools()
-
-        azure_endpoint = chat_connection.endpoint
-        if azure_endpoint.endswith("/openai/v1"):
-            azure_endpoint = azure_endpoint[: -len("/openai/v1")]
-        self._azure_endpoint = azure_endpoint
+        self._project_endpoint = chat_connection.azure_ai_project
         self._deployment = chat_connection.deployment
 
     def infer(self, input: dict[str, Any]) -> dict[str, Any]:
@@ -93,9 +89,9 @@ class WeatherAgentLocalTarget(BaseTarget):
         """
         async def _run():
             agent = Agent(
-                client=OpenAIChatClient(
+                client=FoundryChatClient(
+                    project_endpoint=self._project_endpoint,
                     model=self._deployment,
-                    azure_endpoint=self._azure_endpoint,
                     credential=AzureCliCredential(),
                 ),
                 name=self._agent_name,
