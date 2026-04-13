@@ -56,8 +56,13 @@ class ModelEvaluator:
         self.model_filter = model_filter
         self._config_path = str(Path(config_path).resolve())
 
+        logger.debug("Discovering components...")
         discover_components()
+        logger.debug("Component discovery complete")
+
+        logger.info("Loading configuration from %s", config_path)
         self.config = Config.from_yaml(config_path)
+        logger.debug("Configuration loaded successfully")
 
         if load_config_only:
             self._trace_capture = self._setup_tracing()
@@ -66,13 +71,27 @@ class ModelEvaluator:
         self._current_dir = Path.cwd()
         self._current_experiment_dir = self._create_experiment_dir()
         self._setup_logging()
+        logger.info("Experiment directory: %s", self._current_experiment_dir)
+
         self._trace_capture = self._setup_tracing()
         self._output = self._setup_output_formatter()
+
+        logger.debug("Initializing connections registry")
         self.connections_registry = self._build_connections_registry()
+        if not self.connections_registry:
+            logger.warning("No connections found in configuration. Proceeding without connections.")
+        else:
+            logger.debug("Registered %d connection(s)", len(self.connections_registry))
+
         self.execution_context = self._build_execution_context()
+
+        logger.debug("Registering targets")
         self.targets_registry = self._register_targets(model_filter)
+        logger.info("Registered %d target(s): %s", len(self.targets_registry), list(self.targets_registry.keys()))
+
         self.evaluators_registry: Dict[str, Any] = {}
         self._register_evaluators()
+        logger.info("Registered %d evaluator(s): %s", len(self.evaluators_registry), list(self.evaluators_registry.keys()))
 
     # ------------------------------------------------------------------
     # __init__ helpers
@@ -227,6 +246,7 @@ class ModelEvaluator:
                     f"Available: {list(EVALUATOR_REGISTRY.keys())}"
                 )
 
+            logger.debug("Registering evaluator: %s (class: %s)", effective_name, evaluator_name)
             evaluator_instance = evaluator_class(evaluator_dict, self.execution_context)
             self.evaluators_registry[effective_name] = evaluator_instance
 
@@ -251,11 +271,13 @@ class ModelEvaluator:
                 raise ValueError("Dataset configuration required")
 
         factory = DatasetFactory()
-        return factory.create_from_config(
+        ds = factory.create_from_config(
             dataset_config,
             dataset_path_override=dataset_path,
             context=self.execution_context,
         )
+        logger.info("Loaded dataset '%s' with %d record(s)", dataset_config.name, len(ds))
+        return ds
 
     # ------------------------------------------------------------------
     # evaluate() and its helpers
@@ -269,6 +291,8 @@ class ModelEvaluator:
         :returns: A summary dictionary with status, paths, and aggregated metrics.
         :rtype: dict[str, Any]
         """
+        logger.info("Starting evaluation — %d record(s), %d target(s), %d evaluator(s)",
+                     len(dataset), len(self.targets_registry), len(self.evaluators_registry))
         self._suppress_noisy_loggers()
 
         executor = self._create_executor()
@@ -277,6 +301,11 @@ class ModelEvaluator:
         summary = self._build_summary(dataset, failed_records, first_error_msg)
         self._persist_outputs(summary)
         self._cleanup()
+
+        if failed_records > 0:
+            logger.warning("Evaluation completed with %d failed record(s)", failed_records)
+        else:
+            logger.info("Evaluation completed successfully")
 
         return summary
 
