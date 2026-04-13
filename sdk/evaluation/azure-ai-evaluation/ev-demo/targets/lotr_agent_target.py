@@ -85,23 +85,28 @@ class WeatherAgentLocalTarget(BaseTarget):
         self._deployment = chat_connection.deployment
 
     def infer(self, input: dict[str, Any]) -> dict[str, Any]:
-        """Sync infer — creates a fresh async agent per call to avoid
-        stale connection/event-loop issues across sequential calls."""
+        """Sync infer — each call gets a fresh asyncio.run().
+
+        Uses store=False to avoid previous_response_id which hangs
+        on Azure Foundry endpoints. Agent is created per call because
+        asyncio.run() creates a new event loop each time.
+        """
         async def _run():
-            client = OpenAIChatClient(
-                model=self._deployment,
-                azure_endpoint=self._azure_endpoint,
-                credential=AzureCliCredential(),
-            )
             agent = Agent(
+                client=OpenAIChatClient(
+                    model=self._deployment,
+                    azure_endpoint=self._azure_endpoint,
+                    credential=AzureCliCredential(),
+                ),
                 name=self._agent_name,
                 instructions=self._instructions,
-                client=client,
                 tools=[self._tools.get_weather, self._tools.bring_umbrella],
+                default_options={"store": False},
             )
             return await agent.run(f"context: {input['context']}\nquestion: {input['question']}")
 
         response = asyncio.run(_run())
+
         tool_calls = []
         for message in (response.raw_representation.messages if response.raw_representation else []):
             for content in (message.contents if hasattr(message, 'contents') else []):
