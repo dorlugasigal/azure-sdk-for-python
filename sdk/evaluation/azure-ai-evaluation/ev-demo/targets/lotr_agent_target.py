@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Annotated, Any
 
 from pydantic import Field
@@ -8,12 +9,15 @@ from pydantic import Field
 from azure.ai.evaluation._engine.decorators import ExecutionContext, target, BaseTarget
 
 from agent_framework import Agent, tool
-from agent_framework.foundry import FoundryChatClient
+from agent_framework.openai import OpenAIChatClient
 
 import re
 from random import randint
 from pathlib import Path
 from azure.identity.aio import AzureCliCredential
+from azure.ai.projects import AIProjectClient
+from azure.identity import AzureCliCredential as SyncAzureCliCredential
+from azure.core.rest import HttpRequest
 
 def normalize_agent_name(raw_name: str) -> str:
     """
@@ -80,18 +84,61 @@ class WeatherAgentLocalTarget(BaseTarget):
         self._project_endpoint = chat_connection.azure_ai_project
         self._deployment = chat_connection.deployment
 
-    def infer(self, input: dict[str, Any]) -> dict[str, Any]:
-        """Sync infer — each call gets a fresh asyncio.run().
+        # Resolve direct Azure OpenAI endpoint for inference
+        azure_endpoint = chat_connection.endpoint
+        if azure_endpoint.endswith("/openai/v1"):
+            azure_endpoint = azure_endpoint[: -len("/openai/v1")]
+        self._azure_endpoint = azure_endpoint
 
-        Uses store=False to avoid previous_response_id which hangs
-        on Azure Foundry endpoints. Agent is created per call because
-        asyncio.run() creates a new event loop each time.
+        # Deploy agent to Foundry (visible in portal)
+        self._ensure_foundry_agent()
+
+    def _ensure_foundry_agent(self):
+        """Create or update the agent in Foundry via REST API."""
+        client = AIProjectClient(
+            endpoint=self._project_endpoint,
+            credential=SyncAzureCliCredential(),
+        )
+        tool_defs = [
+            {"type": "function", "name": "get_weather",
+             "description": "Get the weather for a given location.",
+             "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "The location to get the weather for."}}, "required": ["location"]}},
+            {"type": "function", "name": "bring_umbrella",
+             "description": "Decide whether to bring an umbrella based on the weather condition.",
+             "parameters": {"type": "object", "properties": {"weather_condition": {"type": "string", "description": "The current weather condition, e.g., rainy, sunny, etc."}}, "required": ["weather_condition"]}},
+        ]
+        payload = {
+            "name": self._agent_name,
+            "definition": {
+                "kind": "prompt",
+                "model": self._deployment,
+                "instructions": self._instructions,
+                "tools": tool_defs,
+            },
+        }
+        # Try create; if agent exists, update it with a new version
+        req = HttpRequest(method="POST", url="/agents?api-version=v1", json=payload)
+        resp = client.send_request(req)
+        if resp.status_code == 409:
+            # Agent exists — update with new version
+            req = HttpRequest(method="POST", url=f"/agents/{self._agent_name}/versions?api-version=v1", json=payload)
+            resp = client.send_request(req)
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(f"Failed to create/update Foundry agent '{self._agent_name}': {resp.content}")
+        client.close()
+
+    def infer(self, input: dict[str, Any]) -> dict[str, Any]:
+        """Sync infer — agent deployed in Foundry, runs via OpenAIChatClient.
+
+        Uses OpenAIChatClient (direct endpoint) instead of FoundryChatClient
+        because the Foundry project endpoint has a bug with previous_response_id
+        that causes tool-calling to hang.
         """
         async def _run():
             agent = Agent(
-                client=FoundryChatClient(
-                    project_endpoint=self._project_endpoint,
+                client=OpenAIChatClient(
                     model=self._deployment,
+                    azure_endpoint=self._azure_endpoint,
                     credential=AzureCliCredential(),
                 ),
                 name=self._agent_name,
