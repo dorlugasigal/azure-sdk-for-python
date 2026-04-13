@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import re
-import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from numbers import Number
@@ -247,44 +246,19 @@ def target(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
                 if "context" in cls_sig.parameters:
                     init_params["context"] = self.context
 
+                self.inner = cls(**init_params)
                 self._is_async = is_async
                 self._has_close = hasattr(cls, "close") and callable(cls.close)
                 self._close_is_async = self._has_close and inspect.iscoroutinefunction(cls.close)
-
-                if self._is_async:
-                    # Async targets need a persistent event loop so that async
-                    # resources (httpx clients, locks) created during __init__
-                    # remain usable across multiple infer() calls.
-                    self._loop = asyncio.new_event_loop()
-                    self._loop_thread = threading.Thread(
-                        target=self._loop.run_forever, daemon=True
-                    )
-                    self._loop_thread.start()
-                    # Create the inner target on the persistent loop
-                    self.inner = asyncio.run_coroutine_threadsafe(
-                        self._create_inner(cls, init_params), self._loop
-                    ).result(timeout=60)
-                else:
-                    self._loop = None
-                    self._loop_thread = None
-                    self.inner = cls(**init_params)
-
-            @staticmethod
-            async def _create_inner(cls: type, params: Dict[str, Any]) -> Any:
-                """Create the inner target instance on the async event loop."""
-                return cls(**params)
 
             def infer(self, input: Dict[str, Any]) -> Dict[str, Any]:
                 """Sync interface — works for both sync and async targets.
 
                 - Sync targets: direct call
-                - Async targets: dispatches to persistent event loop
+                - Async targets: runs in new event loop via asyncio.run()
                 """
                 if self._is_async:
-                    future = asyncio.run_coroutine_threadsafe(
-                        self.inner.infer(input), self._loop
-                    )
-                    return future.result(timeout=120)
+                    return asyncio.run(self.inner.infer(input))
                 return self.inner.infer(input)
 
             async def infer_async(self, input: Dict[str, Any]) -> Dict[str, Any]:
@@ -302,16 +276,10 @@ def target(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
                 """Sync cleanup — handles both sync and async close methods."""
                 if not self._has_close:
                     return
-                if self._close_is_async and self._loop:
-                    asyncio.run_coroutine_threadsafe(
-                        self.inner.close(), self._loop
-                    ).result(timeout=30)
-                elif self._close_is_async:
+                if self._close_is_async:
                     asyncio.run(self.inner.close())
                 else:
                     self.inner.close()
-                if self._loop:
-                    self._loop.call_soon_threadsafe(self._loop.stop)
 
             async def close_async(self) -> None:
                 """Async cleanup — handles both sync and async close methods."""

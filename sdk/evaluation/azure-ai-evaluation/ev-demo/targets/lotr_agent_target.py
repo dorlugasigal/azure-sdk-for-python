@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated, Any
 
 from pydantic import Field
@@ -73,28 +74,34 @@ class WeatherTools:
 class WeatherAgentLocalTarget(BaseTarget):
     def __init__(self, context: ExecutionContext, chat_connection_name: str, instructions_path: str):
         chat_connection = context.connections_registry[chat_connection_name]
-        self.agent_name = normalize_agent_name(f"lotr-agent-{context.model_variant_id}")
-        instructions = load_agent_instructions(__file__, instructions_path)
-        tools = WeatherTools()
+        self._agent_name = normalize_agent_name(f"lotr-agent-{context.model_variant_id}")
+        self._instructions = load_agent_instructions(__file__, instructions_path)
+        self._tools = WeatherTools()
 
         azure_endpoint = chat_connection.endpoint
         if azure_endpoint.endswith("/openai/v1"):
             azure_endpoint = azure_endpoint[: -len("/openai/v1")]
+        self._azure_endpoint = azure_endpoint
+        self._deployment = chat_connection.deployment
 
-        client = OpenAIChatClient(
-            model=chat_connection.deployment,
-            azure_endpoint=azure_endpoint,
-            credential=AzureCliCredential(),
-        )
-        self._agent = Agent(
-            name=self.agent_name,
-            instructions=instructions,
-            client=client,
-            tools=[tools.get_weather, tools.bring_umbrella],
-        )
+    def infer(self, input: dict[str, Any]) -> dict[str, Any]:
+        """Sync infer — creates a fresh async agent per call to avoid
+        stale connection/event-loop issues across sequential calls."""
+        async def _run():
+            client = OpenAIChatClient(
+                model=self._deployment,
+                azure_endpoint=self._azure_endpoint,
+                credential=AzureCliCredential(),
+            )
+            agent = Agent(
+                name=self._agent_name,
+                instructions=self._instructions,
+                client=client,
+                tools=[self._tools.get_weather, self._tools.bring_umbrella],
+            )
+            return await agent.run(f"context: {input['context']}\nquestion: {input['question']}")
 
-    async def infer(self, input: dict[str, Any]) -> dict[str, Any]:
-        response = await self._agent.run(f"context: {input['context']}\nquestion: {input['question']}")
+        response = asyncio.run(_run())
         tool_calls = []
         for message in (response.raw_representation.messages if response.raw_representation else []):
             for content in (message.contents if hasattr(message, 'contents') else []):
@@ -112,7 +119,3 @@ class WeatherAgentLocalTarget(BaseTarget):
             },
             "response_id": response.response_id,
         }
-
-    async def close(self) -> None:
-        """Close clients to release HTTP sessions."""
-        pass
