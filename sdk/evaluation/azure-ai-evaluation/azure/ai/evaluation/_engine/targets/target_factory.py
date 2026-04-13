@@ -92,7 +92,8 @@ def _setup_azure_openai_client(azure_endpoint: str) -> "openai.OpenAI":
         DefaultAzureCredential(), "https://ai.azure.com/.default",
     )
 
-    base_url = f"{azure_endpoint.rstrip('/')}/openai/v1"
+    endpoint = azure_endpoint.rstrip('/')
+    base_url = endpoint if endpoint.endswith("/openai/v1") else f"{endpoint}/openai/v1"
 
     return OpenAI(base_url=base_url, api_key=token_provider)
 

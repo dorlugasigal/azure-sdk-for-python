@@ -84,11 +84,9 @@ class WeatherAgentLocalTarget(BaseTarget):
         self._project_endpoint = chat_connection.azure_ai_project
         self._deployment = chat_connection.deployment
 
-        # Resolve direct Azure OpenAI endpoint for inference
-        azure_endpoint = chat_connection.endpoint
-        if azure_endpoint.endswith("/openai/v1"):
-            azure_endpoint = azure_endpoint[: -len("/openai/v1")]
-        self._azure_endpoint = azure_endpoint
+        # Derive azure_endpoint for OpenAIChatClient (needs base URL without /openai/v1)
+        ep = chat_connection.endpoint.rstrip("/")
+        self._azure_endpoint = ep[: -len("/openai/v1")] if ep.endswith("/openai/v1") else ep
 
         # Deploy agent to Foundry (visible in portal)
         self._ensure_foundry_agent()
@@ -130,9 +128,8 @@ class WeatherAgentLocalTarget(BaseTarget):
     def infer(self, input: dict[str, Any]) -> dict[str, Any]:
         """Sync infer — agent deployed in Foundry, runs via OpenAIChatClient.
 
-        Uses OpenAIChatClient (direct endpoint) instead of FoundryChatClient
-        because the Foundry project endpoint has a bug with previous_response_id
-        that causes tool-calling to hang.
+        FoundryChatClient hangs across multiple asyncio.run() calls due to
+        stale async state. OpenAIChatClient works reliably per-call.
         """
         async def _run():
             agent = Agent(
