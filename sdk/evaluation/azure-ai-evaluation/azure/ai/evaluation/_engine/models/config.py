@@ -6,7 +6,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # Environment variable interpolation
@@ -164,7 +164,7 @@ class CloudConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     foundry_endpoint: str = ""
-    """Azure OpenAI endpoint. Must end with /openai/v1."""
+    """Azure OpenAI base endpoint (e.g. https://xxx.openai.azure.com)."""
 
     foundry_project: Optional[str] = None
     """Azure AI Foundry project endpoint for remote compute."""
@@ -174,6 +174,16 @@ class CloudConfig(BaseModel):
 
     app_insights: Optional[str] = None
     """Application Insights connection string for trace export (TBD)."""
+
+    @field_validator("foundry_endpoint", mode="before")
+    @classmethod
+    def _normalize_foundry_endpoint(cls, v: str) -> str:
+        """Strip /openai/v1 suffix for backward compatibility — the engine appends it where needed."""
+        if isinstance(v, str):
+            v = v.rstrip("/")
+            if v.endswith("/openai/v1"):
+                v = v[:-len("/openai/v1")]
+        return v
 
 
 class ComputeConfig(BaseModel):

@@ -164,7 +164,7 @@ common query fields (`query`, `question`, `prompt`, `input`).
 ### Cloud Block
 ```yaml
 cloud:
-  foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"   # Must end with /openai/v1
+  foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"   # Base Azure OpenAI endpoint
   foundry_project: "${AZURE_AI_PROJECT}"          # For remote compute
   default_evaluator_deployment: "gpt-4.1-mini"    # Default LLM for evaluators
   app_insights: "${AZURE_APP_INSIGHTS_CONNECTION_STRING}"  # Optional
@@ -228,7 +228,7 @@ cp .env.sample .env
 ```
 
 Required for Azure demos:
-- `AZURE_OPENAI_ENDPOINT` — Azure OpenAI endpoint (ending with /openai/v1)
+- `AZURE_OPENAI_ENDPOINT` — Azure OpenAI endpoint (e.g. https://your-resource.openai.azure.com)
 - `AZURE_AI_PROJECT` — Foundry project endpoint
 - `AZURE_OPENAI_DEPLOYMENT` — Default model deployment name
 

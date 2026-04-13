@@ -54,15 +54,15 @@ def _check_az_cli() -> bool:
 
 
 def _derive_foundry_endpoint(project_endpoint: str) -> str:
-    """Derive the OpenAI-compatible endpoint from a project endpoint.
+    """Derive the base Azure OpenAI endpoint from a project endpoint.
 
     Project endpoint: ``https://acct.services.ai.azure.com/api/projects/name``
-    Foundry endpoint: ``https://acct.services.ai.azure.com/openai/v1``
+    Foundry endpoint: ``https://acct.services.ai.azure.com``
     """
     api_projects_idx = project_endpoint.find("/api/projects/")
     if api_projects_idx != -1:
-        return project_endpoint[:api_projects_idx] + "/openai/v1"
-    return project_endpoint.rstrip("/") + "/openai/v1"
+        return project_endpoint[:api_projects_idx]
+    return project_endpoint.rstrip("/")
 
 
 def _save_cloud_config(
@@ -170,7 +170,7 @@ def _manual_prompts(
 
     if not foundry_endpoint:
         foundry_endpoint = click.prompt(
-            "  Foundry endpoint (must end with /openai/v1)", type=str
+            "  Foundry endpoint (base Azure OpenAI URL)", type=str
         ).strip()
     if not foundry_project:
         foundry_project = click.prompt(

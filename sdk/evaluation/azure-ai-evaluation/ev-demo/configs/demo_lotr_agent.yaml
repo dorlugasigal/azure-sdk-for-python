@@ -4,7 +4,7 @@ experiment:
   description: "Compare Lord of the Rings agents built with MAF"
 
   cloud:
-    foundry_endpoint: "https://foundry-evee-ko9z2s7c.openai.azure.com"
+    foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"
     foundry_project: "${AZURE_AI_PROJECT}"
     default_evaluator_deployment: "gpt-4.1-mini"
 
