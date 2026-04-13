@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-import threading
 from typing import Annotated, Any
 
 from pydantic import Field
@@ -15,21 +13,6 @@ import re
 from random import randint
 from pathlib import Path
 from azure.identity.aio import AzureCliCredential
-
-
-# --- Persistent event loop on a background thread ---
-# The eval engine calls infer() via asyncio.run() which creates a new event loop
-# per call. Async clients (httpx, locks) break across loops. A dedicated
-# background loop lets us create the agent once and reuse it for all records.
-_loop = asyncio.new_event_loop()
-_thread = threading.Thread(target=_loop.run_forever, daemon=True)
-_thread.start()
-
-
-def _run_async(coro):
-    """Run a coroutine on the persistent background loop and wait for result."""
-    future = asyncio.run_coroutine_threadsafe(coro, _loop)
-    return future.result(timeout=120)
 
 def normalize_agent_name(raw_name: str) -> str:
     """
@@ -98,8 +81,6 @@ class WeatherAgentLocalTarget(BaseTarget):
         if azure_endpoint.endswith("/openai/v1"):
             azure_endpoint = azure_endpoint[: -len("/openai/v1")]
 
-        # Create agent on the persistent background loop so all async
-        # internals (httpx client, locks) are bound to the same loop.
         client = OpenAIChatClient(
             model=chat_connection.deployment,
             azure_endpoint=azure_endpoint,
@@ -112,11 +93,7 @@ class WeatherAgentLocalTarget(BaseTarget):
             tools=[tools.get_weather, tools.bring_umbrella],
         )
 
-    def infer(self, input: dict[str, Any]) -> dict[str, Any]:
-        """Sync infer — dispatches to the persistent background event loop."""
-        return _run_async(self._infer_async(input))
-
-    async def _infer_async(self, input: dict[str, Any]) -> dict[str, Any]:
+    async def infer(self, input: dict[str, Any]) -> dict[str, Any]:
         response = await self._agent.run(f"context: {input['context']}\nquestion: {input['question']}")
         tool_calls = []
         for message in (response.raw_representation.messages if response.raw_representation else []):
@@ -135,3 +112,7 @@ class WeatherAgentLocalTarget(BaseTarget):
             },
             "response_id": response.response_id,
         }
+
+    async def close(self) -> None:
+        """Close clients to release HTTP sessions."""
+        pass
