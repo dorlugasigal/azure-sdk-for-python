@@ -78,7 +78,11 @@ class BaseTarget(ABC):
 
     @abstractmethod
     def infer(self, input: Dict[str, Any]) -> Dict[str, Any]:
-        """Perform inference on input."""
+        """Perform inference on input.
+
+        Override with ``def infer(...)`` for synchronous targets or
+        ``async def infer(...)`` for asynchronous targets.
+        """
         ...
 
     def close(self) -> None:
@@ -191,6 +195,27 @@ def evaluator(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
     return decorator
 
 
+def _validate_infer(cls: type) -> None:
+    """Ensure *cls* provides a concrete ``infer`` method.
+
+    Raises :class:`NotImplementedError` at decoration time with actionable
+    guidance instead of letting the cryptic ``TypeError: Can't instantiate
+    abstract class …`` surface at runtime.
+    """
+    # For plain classes (no ABC), missing `infer` will already raise
+    # AttributeError on the `inspect.iscoroutinefunction(cls.infer)` call
+    # that follows — no extra check needed.
+    abstract_methods = getattr(cls, "__abstractmethods__", None)
+    if abstract_methods is None or "infer" not in abstract_methods:
+        return
+
+    raise NotImplementedError(
+        f"Target class '{cls.__name__}' must implement the 'infer' method. "
+        f"Use either 'def infer(self, input)' for sync targets or "
+        f"'async def infer(self, input)' for async targets."
+    )
+
+
 def target(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
     """Decorator for creating targets."""
 
@@ -199,6 +224,11 @@ def target(name: Optional[str] = None) -> Callable[[type[T]], type[T]]:
 
         if target_name in TARGET_REGISTRY:
             raise ValueError(f"Target '{target_name}' already registered")
+
+        # Validate that the user provided a concrete infer() implementation.
+        # BaseTarget.infer is abstract; the user must override it with either
+        # ``def infer(...)`` or ``async def infer(...)``.
+        _validate_infer(cls)
 
         # Detect if the user's infer method is async
         is_async = inspect.iscoroutinefunction(cls.infer)
