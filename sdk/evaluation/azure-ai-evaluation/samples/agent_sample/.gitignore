@@ -1,0 +1,27 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+*.egg-info
+
+# Virtual environments
+.venv*/
+
+# Experiment outputs and logs
+output/
+logs/
+
+# Environment files
+.env
+!.env.sample
+
+# Code coverage
+.coverage
+htmlcov/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+test-results/
