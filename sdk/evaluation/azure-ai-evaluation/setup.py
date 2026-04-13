@@ -111,5 +111,6 @@ setup(
         "azure.ai.evaluation.simulator._data_sources": ["*.json"],
         "azure.ai.evaluation._common.raiclient": ["**/*.py"],
         "azure.ai.evaluation._engine.ui": ["*.html"],
+        "azure.ai.evaluation._engine.cli": ["templates/**/*", "templates/**/.*"],
     },
 )
