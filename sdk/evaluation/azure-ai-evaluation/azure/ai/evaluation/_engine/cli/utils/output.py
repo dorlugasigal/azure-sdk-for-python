@@ -75,7 +75,7 @@ def show_results_table(results: Dict[str, Any]) -> None:
 
     if _HAS_RICH:
         table = Table(title="Evaluation Results", border_style="green")
-        table.add_column("Metric", style="bold")
+        table.add_column("Metric", style="bold", no_wrap=True)
         table.add_column("Value", justify="right")
 
         table.add_row("Status", f"[green]{status}[/green]" if status == "completed" else status)
