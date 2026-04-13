@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..models.config import Config, DatasetConfig
+from ..models.config import Config, ConnectionConfig, DatasetConfig
 from ..dataset_factory import DatasetFactory
 from ..decorators import EVALUATOR_REGISTRY, BaseDataset
 from ..discovery import discover_components
@@ -120,7 +120,8 @@ class ModelEvaluator:
                 if hasattr(connection, "name"):
                     registry[connection.name] = connection
                 elif isinstance(connection, dict):
-                    registry[connection.get("name", "default")] = connection
+                    name = connection.get("name", "default")
+                    registry[name] = ConnectionConfig(**connection)
         return registry
 
     def _build_execution_context(self) -> ExecutionContext:
