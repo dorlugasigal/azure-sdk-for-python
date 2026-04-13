@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 dependencies = [
     "azure-ai-evaluation[opentelemetry]",
     "python-dotenv>=1.0.0",
-    "agent-framework[azure-ai]>=1.0.0rc5",
+    "agent-framework==1.0.1",
     "azure-ai-projects",
     "openai",
     "langchain-openai",

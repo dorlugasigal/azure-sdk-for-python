@@ -1,0 +1,61 @@
+experiment:
+  name: "lotr-agent-comparison"
+  version: "1.0.0"
+  description: "Compare Lord of the Rings agents built with MAF"
+
+  cloud:
+    foundry_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    foundry_project: "${AZURE_AI_PROJECT}"
+    default_evaluator_deployment: "gpt-4.1-mini"
+
+  targets:
+    - name: "lotr_agent"
+      type: "custom"
+      args:
+        chat_connection_name: ["gpt-4.1-mini"]
+        instructions_path: "instructions.txt"
+
+  dataset:
+    name: "lotr_eval_data"
+    type: "jsonl"
+    args:
+      data_path: "data/lotr_eval_data.jsonl"
+
+  evaluators:
+    - name: "coherence"
+      mapping:
+        query: "dataset.query"
+        response: "target.response"
+    - name: "relevance"
+      mapping:
+        query: "dataset.query"
+        response: "target.response"
+    - name: "task_adherence"
+      mapping:
+        query: "dataset.query"
+        response: "target.output_items"
+    - name: "tool_selection"
+      mapping:
+        query: "dataset.query"
+        response: "target.output_items"
+        tool_definitions: "target.tool_definitions"
+    - name: "tool_call_accuracy"
+      mapping:
+        query: "dataset.query"
+        response: "target.output_items"
+        tool_definitions: "target.tool_definitions"
+        tool_calls: "target.tool_calls"
+    - name: "response_completeness"
+      mapping:
+        response: "target.response"
+        tool_calls: "target.tool_calls"
+
+  connections:
+    default:
+      azure_endpoint: "${AZURE_OPENAI_ENDPOINT}"
+      azure_deployment: "${AZURE_OPENAI_DEPLOYMENT}"
+      azure_ai_project: "${AZURE_AI_PROJECT}"
+    "gpt-4.1-mini":
+      endpoint: "${AZURE_OPENAI_ENDPOINT}"
+      deployment: "gpt-4.1-mini"
+      azure_ai_project: "${AZURE_AI_PROJECT}"
