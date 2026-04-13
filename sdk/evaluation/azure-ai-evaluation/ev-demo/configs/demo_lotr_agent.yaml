@@ -24,24 +24,24 @@ experiment:
   evaluators:
     - name: "coherence"
       mapping:
-        query: "dataset.query"
+        query: "dataset.question"
         response: "target.response"
     - name: "relevance"
       mapping:
-        query: "dataset.query"
+        query: "dataset.question"
         response: "target.response"
     - name: "task_adherence"
       mapping:
-        query: "dataset.query"
+        query: "dataset.question"
         response: "target.output_items"
     - name: "tool_selection"
       mapping:
-        query: "dataset.query"
+        query: "dataset.question"
         response: "target.output_items"
         tool_definitions: "target.tool_definitions"
     - name: "tool_call_accuracy"
       mapping:
-        query: "dataset.query"
+        query: "dataset.question"
         response: "target.output_items"
         tool_definitions: "target.tool_definitions"
         tool_calls: "target.tool_calls"

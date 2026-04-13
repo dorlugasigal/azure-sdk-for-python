@@ -7,15 +7,13 @@ from pydantic import Field
 
 from azure.ai.evaluation._engine.decorators import ExecutionContext, target, BaseTarget
 
-from agent_framework import tool
-from agent_framework.azure import AzureAIProjectAgentProvider
-from azure.ai.projects.aio import AIProjectClient
+from agent_framework import Agent, tool
+from agent_framework.openai import OpenAIChatClient
 
 import re
 from random import randint
 from pathlib import Path
 from azure.identity.aio import AzureCliCredential
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 def normalize_agent_name(raw_name: str) -> str:
     """
@@ -78,45 +76,49 @@ class WeatherAgentLocalTarget(BaseTarget):
         chat_connection = context.connections_registry[chat_connection_name]
         self.agent_name = normalize_agent_name(f"lotr-agent-{context.model_variant_id}")
         self.instructions = load_agent_instructions(__file__, instructions_path)
-        self.credential = AzureCliCredential()
         self.tools = WeatherTools()
-        self.project_client = AIProjectClient(endpoint=chat_connection.endpoint, credential=self.credential)
-        self.provider = AzureAIProjectAgentProvider(project_client=self.project_client)
-        self.model_deployment_name = chat_connection.deployment
-        self.agent = None  # Will be created asynchronously in _ensure_agent()
-        self._agent_lock = asyncio.Lock()
+
+        azure_endpoint = chat_connection.endpoint
+        if azure_endpoint.endswith("/openai/v1"):
+            azure_endpoint = azure_endpoint[: -len("/openai/v1")]
+        self._azure_endpoint = azure_endpoint
+        self._deployment = chat_connection.deployment
         
-    async def _ensure_agent(self):
-        """Create the agent if not already created."""
-        if self.agent is None:
-            async with self._agent_lock:
-                if self.agent is None:  # Double-check inside lock
-                    self.agent = await self.provider.create_agent(
-                        name=self.agent_name,
-                        model=self.model_deployment_name,
-                        instructions=self.instructions,
-                        tools=[self.tools.get_weather, self.tools.bring_umbrella],
-                    )
-                    return self.agent
-                
+    def _create_agent(self):
+        """Create a fresh agent bound to the current event loop."""
+        client = OpenAIChatClient(
+            model=self._deployment,
+            azure_endpoint=self._azure_endpoint,
+            credential=AzureCliCredential(),
+        )
+        return Agent(
+            name=self.agent_name,
+            instructions=self.instructions,
+            client=client,
+            tools=[self.tools.get_weather, self.tools.bring_umbrella],
+        )
+
     async def infer(self, input: dict[str, Any]) -> dict[str, Any]:
-        await self._ensure_agent()
-        response = await self.agent.run(f"context: {input['context']}\nquestion: {input['question']}")
-        tool_calls = [message.contents[0].name for message in response.raw_representation.messages if message.contents[0].type == "function_call"]
+        agent = self._create_agent()
+        response = await agent.run(f"context: {input['context']}\nquestion: {input['question']}")
+        tool_calls = []
+        for message in (response.raw_representation.messages if response.raw_representation else []):
+            for content in (message.contents if hasattr(message, 'contents') else []):
+                if hasattr(content, 'type') and content.type == "function_call":
+                    tool_calls.append(content.name)
 
         usage = response.usage_details
         return {
-            "answer": response.text,
+            "response": response.text,
             "tool_calls": tool_calls,
             "token_usage": {
-                "prompt_tokens": usage.get("input_token_count", 0),
-                "completion_tokens": usage.get("output_token_count", 0),
-                "total_tokens": usage.get("total_token_count", 0),
+                "prompt_tokens": usage.get("input_token_count", 0) if usage else 0,
+                "completion_tokens": usage.get("output_token_count", 0) if usage else 0,
+                "total_tokens": usage.get("total_token_count", 0) if usage else 0,
             },
             "response_id": response.response_id,
         }
 
     async def close(self) -> None:
-        """Close all clients to release HTTP sessions."""
-        await self.project_client.close()
-        await self.credential.close()
+        """Close clients to release HTTP sessions."""
+        pass
